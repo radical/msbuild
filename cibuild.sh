@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+#set -e
 
 usage()
 {
@@ -201,6 +201,9 @@ BUILD_MSBUILD_ARGS="$PROJECT_FILE_ARG /t:$TARGET_ARG /p:OS=$OS_ARG /p:Configurat
 setHome
 
 restoreBuildTools
+echo "================ Dumping init-tools.log ============="
+cat init-tools.log
+echo "================ END: Dumping init-tools.log ============="
 
 echo
 echo "** Rebuilding MSBuild with binaries from BuildTools"
