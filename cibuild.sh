@@ -60,7 +60,6 @@ runMSBuildWith()
 	echo "** Build completed. Exit code: $?"
 	egrep "Warning\(s\)|Error\(s\)|Time Elapsed" "$logPath"
 	echo "** Log: $logPath"
-    #cat $logPath
 }
 
 setMonoDir(){
@@ -203,9 +202,9 @@ setHome
 
 echo "** Using mono version:"
 $RUNTIME_HOST --version 
-echo "** deleting nuget caches"
-rm -Rf ~/.nuget/cache
-rm -Rf ~/.local/share/NuGet/
+#echo "** deleting nuget caches"
+#rm -Rf ~/.nuget/cache
+#rm -Rf ~/.local/share/NuGet/
 restoreBuildTools
 #echo "================ Dumping init-tools.log ============="
 #cat init-tools.log
