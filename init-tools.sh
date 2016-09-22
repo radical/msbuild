@@ -91,7 +91,8 @@ if [ ! -e $__PROJECT_JSON_FILE ]; then
         echo "... and the generated project.json for them:"
         cat $__PROJECT_JSON_FILE
         echo "Running: $__DOTNET_CMD restore \"$__PROJECT_JSON_FILE\" --packages $__PACKAGES_DIR -v Debug --source $__BUILDTOOLS_SOURCE" >> $__init_tools_log
-        $__DOTNET_CMD restore "$__PROJECT_JSON_FILE" --packages $__PACKAGES_DIR -v Debug --source $__BUILDTOOLS_SOURCE >> $__init_tools_log
+        #$__DOTNET_CMD restore "$__PROJECT_JSON_FILE" --packages $__PACKAGES_DIR -v Debug --source $__BUILDTOOLS_SOURCE >> $__init_tools_log
+        $__DOTNET_CMD restore "$__PROJECT_JSON_FILE" --packages $__PACKAGES_DIR -v Debug --source $__BUILDTOOLS_SOURCE 2>&1 | tee $__init_tools_log
         if [ ! -e "$__BUILD_TOOLS_PATH/init-tools.sh" ]; then echo "ERROR: Could not restore build tools correctly. See '$__init_tools_log' for more details."; cat $__init_tools_log ; rm "$__PROJECT_JSON_FILE"; exit 1; fi
     fi
 
