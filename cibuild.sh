@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+#set -e
 
 usage()
 {
@@ -60,6 +60,7 @@ runMSBuildWith()
 	echo "** Build completed. Exit code: $?"
 	egrep "Warning\(s\)|Error\(s\)|Time Elapsed" "$logPath"
 	echo "** Log: $logPath"
+    cat $logPath
 }
 
 setMonoDir(){
