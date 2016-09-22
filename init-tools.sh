@@ -87,6 +87,7 @@ if [ ! -e $__PROJECT_JSON_FILE ]; then
         #echo "*** packages under ~/.nuget/packages:"
         #ls -l ~/.nuget/packages
 
+
         echo "Restoring BuildTools version $__BUILD_TOOLS_PACKAGE_VERSION..."
         echo "... and the generated project.json for them:"
         cat $__PROJECT_JSON_FILE
