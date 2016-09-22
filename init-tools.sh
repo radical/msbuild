@@ -82,6 +82,11 @@ if [ ! -e $__PROJECT_JSON_FILE ]; then
         echo "*** and ls -l ~/.local/share/NuGet/v3-cache"
         ls -l ~/.local/share/NuGet/v3-cache/
 
+        echo "*** removing all consolehost stuff"
+        rm -Rf ~/.nuget/packages/*ConsoleHost*/
+        echo "*** packages under ~/.nuget/packages:"
+        ls -l ~/.nuget/packages
+
         echo "Restoring BuildTools version $__BUILD_TOOLS_PACKAGE_VERSION..."
         echo "... and the generated project.json for them:"
         cat $__PROJECT_JSON_FILE
