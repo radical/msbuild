@@ -77,15 +77,15 @@ if [ ! -e $__PROJECT_JSON_FILE ]; then
     if [ ! -e "$__BUILD_TOOLS_PATH/init-tools.sh" ]; then
         echo "*** packages under ~/.nuget/packages:"
         ls -l ~/.nuget/packages
-        echo "*** and ls -l ~/.local/share/NuGet/"
-        ls -l ~/.local/share/NuGet
-        echo "*** and ls -l ~/.local/share/NuGet/v3-cache"
-        ls -l ~/.local/share/NuGet/v3-cache/
+        #echo "*** and ls -l ~/.local/share/NuGet/"
+        #ls -l ~/.local/share/NuGet
+        #echo "*** and ls -l ~/.local/share/NuGet/v3-cache"
+        #ls -l ~/.local/share/NuGet/v3-cache/
 
-        echo "*** removing all consolehost stuff"
-        rm -Rf ~/.nuget/packages/*ConsoleHost*/
-        echo "*** packages under ~/.nuget/packages:"
-        ls -l ~/.nuget/packages
+        #echo "*** removing all consolehost stuff"
+        #rm -Rf ~/.nuget/packages/*ConsoleHost*/
+        #echo "*** packages under ~/.nuget/packages:"
+        #ls -l ~/.nuget/packages
 
         echo "Restoring BuildTools version $__BUILD_TOOLS_PACKAGE_VERSION..."
         echo "... and the generated project.json for them:"
