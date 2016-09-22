@@ -201,6 +201,8 @@ BUILD_MSBUILD_ARGS="$PROJECT_FILE_ARG /t:$TARGET_ARG /p:OS=$OS_ARG /p:Configurat
 
 setHome
 
+echo "** Using mono version:"
+$RUNTIME_HOST --version 
 echo "** deleting nuget caches"
 rm -Rf ~/.nuget/cache
 rm -Rf ~/.local/share/NuGet/
