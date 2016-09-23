@@ -11,7 +11,11 @@
         "System.Runtime.InteropServices.RuntimeInformation": "4.0.0",
         "System.Threading.Thread": "4.0.0",
         "Microsoft.NETCore.Runtime.CoreCLR": "1.0.2",
-        "Microsoft.NETCore.TestHost": "1.0.0"
+        "Microsoft.NETCore.TestHost": "1.0.0",
+        "Microsoft.DotNet.BuildTools.TestSuite": "1.0.0-prerelease-00508-01",
+        "microsoft.xunit.netcore.extensions": "1.0.0-prerelease-00520-02",
+        "xunit.abstractions" : "2.0.0",
+        "xunit.assert": "2.1.0"
       },
       "imports": "portable-net451+win81"
     }
