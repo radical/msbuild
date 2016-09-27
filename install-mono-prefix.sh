@@ -20,6 +20,8 @@ mkdir -p $XBUILD_DIR/$MSBUILD_TOOLSVERSION
 #cp -R $XBUILD_DIR/14.0/Imports $XBUILD_DIR/$MSBUILD_TOOLSVERSION
 #cp -R $XBUILD_DIR/14.0/Microsoft.Common.targets $XBUILD_DIR/$MSBUILD_TOOLSVERSION
 
+cp $MSBUILD_OUT_DIR/Extensions/14.1/Microsoft.Common.props $XBUILD_DIR/$MSBUILD_TOOLSVERSION
+
 cp -R nuget-support/tv/ $XBUILD_DIR/$MSBUILD_TOOLSVERSION
 cp -R nuget-support/tasks-targets/ $XBUILD_DIR/
 
