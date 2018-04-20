@@ -1,27 +1,46 @@
-<Project ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Import Project="..\..\..\dir.props" />
+<Project>
     <PropertyGroup>
         <OutputType>Library</OutputType>
         <AssemblyName>TestTask.$(AsmVersion)</AssemblyName>
         <DebugType>full</DebugType>
+        <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     </PropertyGroup>
 
 	<ItemGroup>
         <Compile Include="TestTask.cs" />
 
-        <Reference Include="Microsoft.Build.Tasks.$(AsmVersion)" />
-        <Reference Include="Microsoft.Build.Utilities.$(AsmVersion)" />
+        <Reference Include="$(OutDir)\Microsoft.Build.Tasks.$(AsmVersion).dll" />
+        <Reference Include="$(OutDir)\Microsoft.Build.Tasks.Core.dll" />
+        <Reference Include="$(OutDir)\Roslyn\Microsoft.Build.Tasks.CodeAnalysis.dll" />
+
+        <Reference Include="$(OutDir)\Microsoft.Build.Utilities.$(AsmVersion).dll" />
+        <Reference Include="$(OutDir)\Microsoft.Build.Utilities.Core.dll" />
 	</ItemGroup>
 
-    <Target Name="Test"
+    <!-- Target Name="Test"
             DependsOnTargets="Build"
             Condition="'$(MonoBuild)' == 'true' and '$(OS)' != 'Windows_NT'">
         <MSBuild
             Projects="test.proj"
             Targets="Test" />
-	</Target>
+	</Target -->
 
-    <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
+    <Target Name="Build" Inputs="@(Compile)" Outputs="$(OutDir)\$(AssemblyName).dll">
+		<!-- Disabled CS1701, as Microsoft.Build.Tasks.CodeAnalysis.dll from roslyn
+			 is built against Microsoft.Build.* 14.0 assemblies, are we are referencing
+			 15.1.x -->
+		<Csc
+			DisabledWarnings="1701"
+			OutputAssembly="$(OutDir)\$(AssemblyName).dll"
+			References="@(Reference)"
+			Sources="@(Compile)"
+			TargetType="Library"
+			ToolExe="$(CscToolExe)"
+			ToolPath="$(CscToolPath)"
+			/>
+    </Target>
+
+    <!-- Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" / -->
 
     <Target Name="BeforeBuild">
         <Error Condition="'$(AsmVersion)' == ''" Text="AsmVersion property should be set to 'v4.0' or 'v12.0'" />

@@ -1,0 +1,9 @@
+<Project>
+    <Target Name="GenerateGitBuildInfo" BeforeTargets="CoreCompile">
+		<PropertyGroup>
+            <BuildInfoFileName>$(MSBuildProjectDirectory)\GitBuildInfo.cs</BuildInfoFileName>
+            <!-- BuildInfoFileName>$(DeploymentDir)\version.txt</BuildInfoFileName -->
+		</PropertyGroup>
+		<Exec Command="$(RepoRoot)\gen_build_info.sh $(BuildInfoFileName)"/>
+	</Target>
+</Project>

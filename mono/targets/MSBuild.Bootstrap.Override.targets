@@ -1,0 +1,39 @@
+<Project>
+        <!-- building it like this till the project gets merged upstream and we can
+             have the facades project in the sln.
+             FIXME: Configuration? -->
+
+    <Target Name="BuildFacades" AfterTargets="Build" Condition="'$(TargetFramework)' != ''">
+        <Message Text="OutDir=$(OutDir) and OutputPath=$(OutputPath)" />
+        <MSBuild
+            Projects="$(RepoRoot)\mono\facades\build.proj"
+            Targets="BuildFacades"
+            Properties="OutputPath=$(OutputPath);OutDir=$(OutDir);MonoBuild=true" />
+    </Target>
+        
+        <!-- FIXME: move the targets here -->
+    <!-- in -bootstrapOnly mode, this will be run with the first build.
+         Otherwise, only with the second build -->
+    <Target Name="TestFacades" AfterTargets="Test" Condition="'$(TargetFramework)' != ''">
+        <Message Text="OutDir=$(OutDir) and OutputPath=$(OutputPath)" />
+
+        <MSBuild Projects="$(RepoRoot)\mono\facades\tests\build.csproj" Targets="Build"
+                Properties="AsmVersion=v4.0;OutputPath=$(OutputPath);OutDir=$(OutDir);MonoBuild=true;TargetFramework=$(TargetFramework)" />
+        <MSBuild Projects="$(RepoRoot)\mono\facades\tests\build.csproj" Targets="Build"
+                Properties="AsmVersion=v12.0;OutputPath=$(OutputPath);OutDir=$(OutDir);MonoBuild=true;TargetFramework=$(TargetFramework)" />
+
+        <Copy SourceFiles="$(OutDir)\Roslyn\Microsoft.Build.Tasks.CodeAnalysis.dll" DestinationFolder="$(OutDir)" />
+
+        <Exec Command="mono $(OutDir)\MSBuild.dll /fl /flp:v=diag $(RepoRoot)\mono\facades\tests\test.proj /t:Test /p:AsmVersion=v4.0 /p:OutputPath=$(OutputPath) /p:OutDir=$(OutDir) /p:MonoBuild=true /p:TargetFramework=$(TargetFramework)" />
+        <Exec Command="mono $(OutDir)\MSBuild.dll /fl /flp:v=diag $(RepoRoot)\mono\facades\tests\test.proj /t:Test /p:AsmVersion=v12.0 /p:OutputPath=$(OutputPath) /p:OutDir=$(OutDir) /p:MonoBuild=true /p:TargetFramework=$(TargetFramework)" />
+    </Target>
+
+    <Target Name="BuildMonoTasks" AfterTargets="Build" Condition="'$(TargetFramework)' != ''">
+        <Message Text="OutDir=$(OutDir) and OutputPath=$(OutputPath)" />
+        <MSBuild
+            Projects="$(RepoRoot)\mono\tasks\build.csproj"
+            Targets="Build"
+            Properties="OutputPath=$(OutputPath);OutDir=$(OutDir);TargetFramework=$(TargetFramework);MonoBuild=true" />
+    </Target>
+
+</Project>

@@ -148,4 +148,6 @@
   <!-- Import parent targets -->
   <Import Project="..\Directory.Build.targets"/>
 
+  <Import Project="$(RepoRoot)\mono\targets\$(MSBuildProjectName).Override.targets" Condition="Exists('$(RepoRoot)\mono\targets\$(MSBuildProjectName).Override.targets') and '$(MonoBuild)' == 'true'" />
+
 </Project>
