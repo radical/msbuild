@@ -2,7 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using Microsoft.Build.Engine.UnitTests;
+using Microsoft.Build.UnitTests;
 using NuGet.Versioning;
 using Shouldly;
 using System.Collections.Generic;
@@ -134,8 +134,8 @@ namespace NuGet.MSBuildSdkResolver.UnitTests
                 NuGetSdkResolverBase.NuGetAssemblies.ShouldNotContain(newlyLoadedAssembly);
             }
         }
-
 #endif
+
         private void VerifyTryGetNuGetVersionForSdk(string version, NuGetVersion expectedVersion, SdkResolverContextBase context = null)
         {
             object parsedVersion;
