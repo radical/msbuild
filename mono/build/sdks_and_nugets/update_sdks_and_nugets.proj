@@ -63,6 +63,9 @@
             Targets="Restore;Build"
             Properties="OutputDirectory=$(DotNetOverlayDirectory)\nuget-support\msbuild-bin"/>
         
-        <Exec Command="$(MSBuildThisFileDirectory)/../extract_and_copy_hostfxr.sh $(DotNetSdkVersionForLibHostFxr) $(MSBuildSdkResolverOutDir)" />
+        <!-- Ignoring the .so for linux, because it works on a smaller set of distributions -->
+        <Exec
+            Condition="'$([MSBuild]::IsOSPlatform(OSX))'"
+            Command="$(MSBuildThisFileDirectory)/../extract_and_copy_hostfxr.sh $(DotNetSdkVersionForLibHostFxr) $(MSBuildSdkResolverOutDir)" />
     </Target>
 </Project>
