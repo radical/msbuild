@@ -1,6 +1,6 @@
 <Project DefaultTargets="DeploySdksAndNuGets">
     <Import Project="$(MSBuildThisFileDirectory)\..\common.props" />
-    <Import Project="$(MSBuildThisFileDirectory)\..\DotnetBitsVersions.props" />
+    <Import Project="$(MSBuildThisFileDirectory)\..\DotNetBitsVersions.props" />
 
     <PropertyGroup>
         <HostOSName Condition="'$(HostOSName)' == ''">osx</HostOSName>
@@ -51,7 +51,7 @@
                     DependencyPackageName=Microsoft.DotNet.MSBuildSdkResolver;
                     DependencyPackageVersion=$(MicrosoftDotNetMSBuildSdkResolverVersion);
                     NuGetPackagesDir=$(NuGetPackagesDir);
-                    DotnetSdkResolverDir=$(MSBuildSdkResolverOutDir)
+                    DotNetSdkResolverDir=$(MSBuildSdkResolverOutDir)
                 </Properties>
             </NuGetsToBundle>
         </ItemGroup>
