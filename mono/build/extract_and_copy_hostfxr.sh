@@ -44,7 +44,7 @@ OLDCWD=`pwd`
 cd $TMPDIR
 
 GetDotNetInstallScript $TMPDIR
-sh ./dotnet-install.sh --version $1 --install-dir $DOTNET_DIR --architecture x64 --runtime dotnet --skip-non-versioned-files
+bash ./dotnet-install.sh --version $1 --install-dir $DOTNET_DIR --architecture x64 --runtime dotnet --skip-non-versioned-files
 find $DOTNET_DIR -name libhostfxr.dylib | xargs -I {} cp -v {} $DESTDIR
 
 cd $OLDCWD
