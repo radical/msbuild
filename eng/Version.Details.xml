@@ -39,5 +39,9 @@
       <Uri>https://github.com/dotnet/toolset</Uri>
       <Sha>fbd8f7a1f552df1a31271e9f66f31b6567fdf433</Sha>
     </Dependency>
+    <Dependency Name="Microsoft.Net.Compilers" Version="3.5.0-beta1-19606-04" CoherentParentDependency="Microsoft.Dotnet.Toolset.Internal">
+      <Uri>https://github.com/dotnet/roslyn</Uri>
+      <Sha>d2bd58c62f9104d66f415141a1a27b665c78690c</Sha>
+    </Dependency>
   </ProductDependencies>
 </Dependencies>
