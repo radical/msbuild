@@ -107,10 +107,6 @@ bootstrapRoot="$Stage1Dir/bin/bootstrap"
 
 if [ $host_type = "core" ]
 then
-  . "$ScriptRoot/common/tools.sh"
-
-  InitializeDotNetCli true
-
   _InitializeBuildTool="$_InitializeDotNetCli/dotnet"
   _InitializeBuildToolCommand="$bootstrapRoot/netcoreapp2.1/MSBuild/MSBuild.dll"
   _InitializeBuildToolFramework="netcoreapp2.1"
