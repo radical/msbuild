@@ -34,7 +34,6 @@
   </PropertyGroup>
   <!-- Toolset Dependencies -->
   <PropertyGroup>
-    <DotNetCliVersion>3.0.100</DotNetCliVersion>
     <MicrosoftNetCompilersVersion>3.5.0-beta1-19606-04</MicrosoftNetCompilersVersion>
     <MicrosoftNETSdkVersion>3.1.100-rtm.19568.4</MicrosoftNETSdkVersion>
     <MicrosoftNETSdkRazorVersion>3.1.1-servicing.19577.2</MicrosoftNETSdkRazorVersion>
@@ -43,6 +42,7 @@
     <ILLinkTasksVersion>0.1.6-prerelease.19380.1</ILLinkTasksVersion>
     <MicrosoftNETCoreAppVersion>3.1.0-rtm.19565.2</MicrosoftNETCoreAppVersion>
     <MicrosoftDotNetCliRuntimeVersion>3.1.200-preview.19611.9</MicrosoftDotNetCliRuntimeVersion>
+    <DotNetCliVersion>3.1.100</DotNetCliVersion>
   </PropertyGroup>
   <Target Name="OverrideArcadeFileVersion" AfterTargets="_InitializeAssemblyVersion">
     <!-- See https://github.com/dotnet/arcade/issues/3386
