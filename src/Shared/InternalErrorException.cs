@@ -1,14 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary> Exception to be thrown whenever an assumption we have made 
-//           in the code turns out to be false.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Diagnostics;
-using System.Security.Permissions; // for SecurityPermissionAttribute
 using System.Runtime.Serialization;
 
 namespace Microsoft.Build.Shared
@@ -106,28 +100,40 @@ namespace Microsoft.Build.Shared
 
             if (Environment.GetEnvironmentVariable("MSBUILDLAUNCHDEBUGGER") != null)
             {
-                Debug.Fail(message, innerMessage);
-                Debugger.Launch();
+                LaunchDebugger(message, innerMessage);
                 return;
             }
 
-#if DEBUG   
-            if (Environment.GetEnvironmentVariable("MSBUILDDONOTLAUNCHDEBUGGER") == null)
+#if DEBUG
+            if (!RunningTests() && Environment.GetEnvironmentVariable("MSBUILDDONOTLAUNCHDEBUGGER") == null
+                && Environment.GetEnvironmentVariable("_NTROOT") == null)
             {
-                string processName = Process.GetCurrentProcess().ProcessName.ToUpperInvariant();
+                LaunchDebugger(message, innerMessage);
+                return;
+            }
+#endif
+        }
 
-                if (!FileUtilities.RunningTests)
-                {
-                    if (Environment.GetEnvironmentVariable("_NTROOT") == null)
-                    {
-                        Debug.Fail(message, innerMessage);
-                        Debugger.Launch();
-                        return;
-                    }
-                }
+        private static void LaunchDebugger(string message, string innerMessage)
+        {
+#if FEATURE_DEBUG_LAUNCH
+            Debug.Fail(message, innerMessage);
+            Debugger.Launch();
+#else
+            Console.WriteLine("MSBuild Failure: " + message);    
+            if (!string.IsNullOrEmpty(innerMessage))
+            {
+                Console.WriteLine(innerMessage);
+            }
+            Console.WriteLine("Waiting for debugger to attach to process: " + Process.GetCurrentProcess().Id);
+            while (!Debugger.IsAttached)
+            {
+                System.Threading.Thread.Sleep(100);
             }
 #endif
         }
         #endregion
+
+        private static bool RunningTests() => BuildEnvironmentHelper.Instance.RunningTests;
     }
 }

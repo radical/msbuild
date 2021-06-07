@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary> Rule class. </summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
@@ -426,7 +422,7 @@ namespace Microsoft.Build.Framework.XamlTypes
                 // check-lock-check pattern DOESN'T work here because two fields get initialized within this lazy initialization method.
                 lock (_syncObject)
                 {
-                    if (null == _evaluatedCategories)
+                    if (_evaluatedCategories == null)
                     {
                         CreateCategoryNamePropertyListMap();
                     }
@@ -457,7 +453,7 @@ namespace Microsoft.Build.Framework.XamlTypes
             // check-lock-check pattern DOESN'T work here because two fields get initialized within this lazy initialization method.
             lock (_syncObject)
             {
-                if (null == _categoryNamePropertyListMap)
+                if (_categoryNamePropertyListMap == null)
                 {
                     CreateCategoryNamePropertyListMap();
                 }
@@ -475,7 +471,7 @@ namespace Microsoft.Build.Framework.XamlTypes
             // check-lock-check pattern DOESN'T work here because two fields get initialized within this lazy initialization method.
             lock (_syncObject)
             {
-                if (null == _categoryNamePropertyListMap)
+                if (_categoryNamePropertyListMap == null)
                 {
                     CreateCategoryNamePropertyListMap();
                 }
@@ -561,7 +557,7 @@ namespace Microsoft.Build.Framework.XamlTypes
         /// </summary>
         private void Initialize()
         {
-            if (null != Properties)
+            if (Properties != null)
             {
                 // Set parent pointers on all containing properties.
                 foreach (BaseProperty property in Properties)
@@ -581,7 +577,7 @@ namespace Microsoft.Build.Framework.XamlTypes
             {
                 _evaluatedCategories = new List<Category>();
 
-                if (null != Categories)
+                if (Categories != null)
                 {
                     _evaluatedCategories.AddRange(Categories);
                 }

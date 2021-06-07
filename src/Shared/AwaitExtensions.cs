@@ -1,13 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Helper methods for dealing with 'await'able objects.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Concurrent;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,7 +53,7 @@ namespace Microsoft.Build.Shared
         /// <returns>The awaiter.</returns>
         internal static TaskAwaiter GetAwaiter(this WaitHandle handle)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(handle, "handle");
+            ErrorUtilities.VerifyThrowArgumentNull(handle, nameof(handle));
             return handle.ToTask().GetAwaiter();
         }
 
@@ -111,8 +106,6 @@ namespace Microsoft.Build.Shared
             else
             {
                 var localVariableInitLock = new object();
-                var culture = CultureInfo.CurrentCulture;
-                var uiCulture = CultureInfo.CurrentUICulture;
                 lock (localVariableInitLock)
                 {
                     RegisteredWaitHandle[] callbackHandles = new RegisteredWaitHandle[handles.Length];
@@ -187,7 +180,9 @@ namespace Microsoft.Build.Shared
                 });
 
                 Thread thread = new Thread(threadStart);
+#if FEATURE_APARTMENT_STATE
                 thread.SetApartmentState(ApartmentState.STA);
+#endif
                 thread.Start(task);
             }
 

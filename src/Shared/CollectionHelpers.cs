@@ -1,15 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Utilities for collections</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Collections;
-using Microsoft.Build.Shared;
+using System.Linq;
 
 namespace Microsoft.Build.Shared
 {
@@ -44,7 +38,7 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal static bool ContainsValueAndIsEqual(this Dictionary<string, string> dictionary, string key, string value, StringComparison comparer)
         {
-            string valueFromDictionary = null;
+            string valueFromDictionary;
             if (dictionary.TryGetValue(key, out valueFromDictionary))
             {
                 return String.Equals(value, valueFromDictionary, comparer);
@@ -52,5 +46,35 @@ namespace Microsoft.Build.Shared
 
             return false;
         }
+
+#if !CLR2COMPATIBILITY
+        internal static bool SetEquivalent<T>(IEnumerable<T> a, IEnumerable<T> b)
+        {
+            return a.ToHashSet().SetEquals(b);
+        }
+
+        internal static bool DictionaryEquals<K, V>(IReadOnlyDictionary<K, V> a, IReadOnlyDictionary<K, V> b)
+        {
+            if (a.Count != b.Count)
+            {
+                return false;
+            }
+
+            foreach (var aKvp in a)
+            {
+                if (!b.TryGetValue(aKvp.Key, out var bValue))
+                {
+                    return false;
+                }
+
+                if (!Equals(aKvp.Value, bValue))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+#endif
     }
 }

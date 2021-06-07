@@ -4,11 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using System.IO;
 
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
+
+#if FEATURE_FILE_TRACKER
 
 namespace Microsoft.Build.Utilities
 {
@@ -19,8 +20,6 @@ namespace Microsoft.Build.Utilities
     public class CanonicalTrackedOutputFiles
     {
         #region Member Data
-        // The output dependency table
-        private Dictionary<string, Dictionary<string, DateTime>> _dependencyTable;
         // The .write. tracking log files
         private ITaskItem[] _tlogFiles;
         // The TaskLoggingHelper that we log progress to
@@ -31,49 +30,35 @@ namespace Microsoft.Build.Utilities
 
         #region Properties
 
-        // Provide external access to the dependencyTable
-#if WHIDBEY_VISIBILITY
-        internal
-#else
-        public
-#endif
-        Dictionary<string, Dictionary<string, DateTime>> DependencyTable
-        {
-            get { return _dependencyTable; }
-        }
+        /// <summary>
+        /// Gets the dependency table.
+        /// </summary>
+        public Dictionary<string, Dictionary<string, DateTime>> DependencyTable { get; private set; }
+
         #endregion
 
         #region Constructors
         /// <summary>
         /// Constructor
         /// </summary>
-        /// <param name="ownerTask">The task that is using file tracker</param>
         /// <param name="tlogFiles">The .write. tlog files to interpret</param>
-        public CanonicalTrackedOutputFiles(ITaskItem[] tlogFiles)
-        {
-            InternalConstruct(null, tlogFiles, true);
-        }
+        public CanonicalTrackedOutputFiles(ITaskItem[] tlogFiles) => InternalConstruct(null, tlogFiles, true);
 
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="ownerTask">The task that is using file tracker</param>
         /// <param name="tlogFiles">The .write. tlog files to interpret</param>
-        public CanonicalTrackedOutputFiles(ITask ownerTask, ITaskItem[] tlogFiles)
-        {
-            InternalConstruct(ownerTask, tlogFiles, true);
-        }
+        public CanonicalTrackedOutputFiles(ITask ownerTask, ITaskItem[] tlogFiles) => InternalConstruct(ownerTask, tlogFiles, true);
 
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="ownerTask">The task that is using file tracker</param>
         /// <param name="tlogFiles">The .write. tlog files to interpret</param>
+        /// <param name="constructOutputsFromTLogs">The output graph is built from the .write. tlogs</param>
         [SuppressMessage("Microsoft.Naming", "CA1702:CompoundWordsShouldBeCasedCorrectly", MessageId = "TLogs", Justification = "Has now shipped as public API; plus it's unclear whether 'Tlog' or 'TLog' is the preferred casing")]
-        public CanonicalTrackedOutputFiles(ITask ownerTask, ITaskItem[] tlogFiles, bool constructOutputsFromTLogs)
-        {
-            InternalConstruct(ownerTask, tlogFiles, constructOutputsFromTLogs);
-        }
+        public CanonicalTrackedOutputFiles(ITask ownerTask, ITaskItem[] tlogFiles, bool constructOutputsFromTLogs) => InternalConstruct(ownerTask, tlogFiles, constructOutputsFromTLogs);
 
         /// <summary>
         /// Internal constructor
@@ -85,14 +70,16 @@ namespace Microsoft.Build.Utilities
         {
             if (ownerTask != null)
             {
-                _log = new TaskLoggingHelper(ownerTask);
-                _log.TaskResources = AssemblyResources.PrimaryResources;
-                _log.HelpKeywordPrefix = "MSBuild.";
+                _log = new TaskLoggingHelper(ownerTask)
+                {
+                    TaskResources = AssemblyResources.PrimaryResources,
+                    HelpKeywordPrefix = "MSBuild."
+                };
             }
 
             _tlogFiles = TrackedDependencies.ExpandWildcards(tlogFiles);
             _tlogAvailable = TrackedDependencies.ItemsExist(_tlogFiles);
-            _dependencyTable = new Dictionary<string, Dictionary<string, DateTime>>(StringComparer.OrdinalIgnoreCase);
+            DependencyTable = new Dictionary<string, Dictionary<string, DateTime>>(StringComparer.OrdinalIgnoreCase);
             if (_tlogFiles != null && constructOutputsFromTLogs)
             {
                 ConstructOutputTable();
@@ -106,7 +93,7 @@ namespace Microsoft.Build.Utilities
         /// </summary>
         private void ConstructOutputTable()
         {
-            string tLogRootingMarker = null;
+            string tLogRootingMarker;
             try
             {
                 // construct a rooting marker from the tlog files
@@ -129,10 +116,7 @@ namespace Microsoft.Build.Utilities
                 {
                     // The tracking logs are not available, they may have been deleted at some point.
                     // Be safe and remove any references from the cache.
-                    if (DependencyTableCache.DependencyTable.ContainsKey(tLogRootingMarker))
-                    {
-                        DependencyTableCache.DependencyTable.Remove(tLogRootingMarker);
-                    }
+                    DependencyTableCache.DependencyTable.Remove(tLogRootingMarker);
                 }
                 return;
             }
@@ -148,7 +132,7 @@ namespace Microsoft.Build.Utilities
             // We have an up to date cached entry
             if (cachedEntry != null)
             {
-                _dependencyTable = (Dictionary<string, System.Collections.Generic.Dictionary<string, System.DateTime>>)cachedEntry.DependencyTable;
+                DependencyTable = (Dictionary<string, Dictionary<string, DateTime>>)cachedEntry.DependencyTable;
                 // Log information about what we're using
                 FileTracker.LogMessageFromResources(_log, MessageImportance.Low, "Tracking_WriteTrackingCached");
                 foreach (ITaskItem tlogItem in cachedEntry.TlogFiles)
@@ -164,7 +148,6 @@ namespace Microsoft.Build.Utilities
             // If there are any errors in the tlogs, we want to warn, stop parsing tlogs, and empty
             // out the dependency table, essentially forcing a rebuild.
             bool encounteredInvalidTLogContents = false;
-            bool exceptionCaught = false;
             string invalidTLogName = null;
             foreach (ITaskItem tlogFileName in _tlogFiles)
             {
@@ -187,8 +170,6 @@ namespace Microsoft.Build.Utilities
 
                             if (tlogEntry[0] == '^') // This is a rooting record, follow the outputs for it
                             {
-                                Dictionary<string, DateTime> dependencies;
-
                                 tlogEntry = tlogEntry.Substring(1);
 
                                 if (tlogEntry.Length == 0)
@@ -198,10 +179,10 @@ namespace Microsoft.Build.Utilities
                                     break;
                                 }
 
-                                if (!_dependencyTable.TryGetValue(tlogEntry, out dependencies))
+                                if (!DependencyTable.TryGetValue(tlogEntry, out Dictionary<string, DateTime> dependencies))
                                 {
                                     dependencies = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
-                                    _dependencyTable.Add(tlogEntry, dependencies);
+                                    DependencyTable.Add(tlogEntry, dependencies);
                                 }
 
                                 // Process each file encountered until we hit a rooting marker
@@ -217,19 +198,19 @@ namespace Microsoft.Build.Utilities
                                             invalidTLogName = tlogFileName.ItemSpec;
                                             break;
                                         }
-                                        else if ((tlogEntry[0] != '^') && (tlogEntry[0] != '#') && (!dependencies.ContainsKey(tlogEntry)))
+                                        else if (tlogEntry[0] != '^' && tlogEntry[0] != '#' && !dependencies.ContainsKey(tlogEntry))
                                         {
                                             // Allows incremental build of projects existing under temp, only for those reads / writes that
                                             // either are not under temp, or are recursively beneath the current project directory.
                                             if (FileTracker.FileIsUnderPath(tlogEntry, currentProjectDirectory) || !FileTracker.FileIsExcludedFromDependencies(tlogEntry))
                                             {
-                                                DateTime fileModifiedTime = NativeMethods.GetLastWriteTimeUtc(tlogEntry);
+                                                DateTime fileModifiedTime = NativeMethodsShared.GetLastWriteFileUtcTime(tlogEntry);
 
                                                 dependencies.Add(tlogEntry, fileModifiedTime);
                                             }
                                         }
                                     }
-                                } while ((tlogEntry != null) && (tlogEntry[0] != '^'));
+                                } while (tlogEntry != null && tlogEntry[0] != '^');
 
                                 if (encounteredInvalidTLogContents)
                                 {
@@ -243,13 +224,8 @@ namespace Microsoft.Build.Utilities
                         }
                     }
                 }
-                catch (Exception e)
+                catch (Exception e) when (ExceptionHandling.IsIoRelatedException(e))
                 {
-                    if (ExceptionHandling.NotExpectedException(e))
-                    {
-                        throw;
-                    }
-
                     FileTracker.LogWarningWithCodeFromResources(_log, "Tracking_RebuildingDueToInvalidTLog", e.Message);
                     break;
                 }
@@ -265,19 +241,15 @@ namespace Microsoft.Build.Utilities
             {
                 // There were problems with the tracking logs -- we've already warned or errored; now we want to make
                 // sure that we essentially force a rebuild of this particular root.
-                if (encounteredInvalidTLogContents || exceptionCaught)
+                if (encounteredInvalidTLogContents)
                 {
-                    if (DependencyTableCache.DependencyTable.ContainsKey(tLogRootingMarker))
-                    {
-                        DependencyTableCache.DependencyTable.Remove(tLogRootingMarker);
-                    }
-
-                    _dependencyTable = new Dictionary<string, Dictionary<string, DateTime>>(StringComparer.OrdinalIgnoreCase);
+                    DependencyTableCache.DependencyTable.Remove(tLogRootingMarker);
+                    DependencyTable = new Dictionary<string, Dictionary<string, DateTime>>(StringComparer.OrdinalIgnoreCase);
                 }
                 else
                 {
                     // Record the newly built valid dependency table in the cache
-                    DependencyTableCache.DependencyTable[tLogRootingMarker] = new DependencyTableCacheEntry(_tlogFiles, _dependencyTable);
+                    DependencyTableCache.DependencyTable[tLogRootingMarker] = new DependencyTableCacheEntry(_tlogFiles, DependencyTable);
                 }
             }
         }
@@ -297,13 +269,12 @@ namespace Microsoft.Build.Utilities
         /// <returns>An array of the rooting markers that were removed.</returns>
         public string[] RemoveRootsWithSharedOutputs(ITaskItem[] sources)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(sources, "sources");
+            ErrorUtilities.VerifyThrowArgumentNull(sources, nameof(sources));
 
-            List<string> removedMarkers = new List<string>();
+            var removedMarkers = new List<string>();
             string currentRoot = FileTracker.FormatRootingMarker(sources);
-            Dictionary<string, DateTime> currentOutputs;
 
-            if (DependencyTable.TryGetValue(currentRoot, out currentOutputs))
+            if (DependencyTable.TryGetValue(currentRoot, out Dictionary<string, DateTime> currentOutputs))
             {
                 // This is O(n*m), but in most cases, both n (the number of roots in the file) and m (the number 
                 // of outputs per root) should be fairly small. 
@@ -338,13 +309,13 @@ namespace Microsoft.Build.Utilities
         /// <summary>
         /// Remove the specified ouput from the dependency graph for the given source file
         /// </summary>
-        /// <param name="sourcePath">The source file who's output is to be discarded</param>
+        /// <param name="sourceRoot">The source file who's output is to be discarded</param>
         /// <param name="outputPathToRemove">The output path to be removed</param>
         public bool RemoveOutputForSourceRoot(string sourceRoot, string outputPathToRemove)
         {
-            if (DependencyTable.ContainsKey(sourceRoot))
+            if (DependencyTable.TryGetValue(sourceRoot, out var outputPaths))
             {
-                bool removed = DependencyTable[sourceRoot].Remove(outputPathToRemove);
+                bool removed = outputPaths.Remove(outputPathToRemove);
                 // If we just removed the last entry for this root, remove the root.
                 if (DependencyTable[sourceRoot].Count == 0)
                 {
@@ -367,8 +338,8 @@ namespace Microsoft.Build.Utilities
         /// <returns>Array of outputs for the source</returns>
         public ITaskItem[] OutputsForNonCompositeSource(params ITaskItem[] sources)
         {
-            Dictionary<string, ITaskItem> outputs = new Dictionary<string, ITaskItem>(StringComparer.OrdinalIgnoreCase);
-            List<ITaskItem> outputsArray = new List<ITaskItem>();
+            var outputs = new Dictionary<string, ITaskItem>(StringComparer.OrdinalIgnoreCase);
+            var outputsArray = new List<ITaskItem>();
             string upperSourcesRoot = FileTracker.FormatRootingMarker(sources);
 
             // Check each root in the output table to see if meets case 1 or two described above
@@ -413,10 +384,7 @@ namespace Microsoft.Build.Utilities
         /// </summary>
         /// <param name="sources">The sources to find outputs for</param>
         /// <returns>Array of outputs for the source</returns>
-        public ITaskItem[] OutputsForSource(params ITaskItem[] sources)
-        {
-            return OutputsForSource(sources, true);
-        }
+        public ITaskItem[] OutputsForSource(params ITaskItem[] sources) => OutputsForSource(sources, true);
 
         /// <summary>
         /// This method determines the outputs for a source root (as in the contents of a rooting marker)
@@ -436,26 +404,26 @@ namespace Microsoft.Build.Utilities
             //    the root in the table then the outputs should be included
             //    *This is currently only in use by unit tests (it is a valid scenario)
 
-            Dictionary<string, ITaskItem> outputs = new Dictionary<string, ITaskItem>(StringComparer.OrdinalIgnoreCase);
-
             // There were no tlogs available, that means we need to build
             if (!_tlogAvailable)
             {
                 return null;
             }
 
+            var outputs = new Dictionary<string, ITaskItem>(StringComparer.OrdinalIgnoreCase);
+
             // Construct a rooting marker from the set of sources
             string upperSourcesRoot = FileTracker.FormatRootingMarker(sources);
-            List<ITaskItem> outputsArray = new List<ITaskItem>();
+            var outputsArray = new List<ITaskItem>();
 
             // Check each root in the output table to see if meets case 1 or two described above
-            foreach (string tableEntryRoot in _dependencyTable.Keys)
+            foreach (string tableEntryRoot in DependencyTable.Keys)
             {
                 string upperTableEntryRoot = tableEntryRoot.ToUpperInvariant();
                 if (searchForSubRootsInCompositeRootingMarkers &&
                    (upperSourcesRoot.Contains(upperTableEntryRoot) ||
                     upperTableEntryRoot.Contains(upperSourcesRoot) ||
-                    RootContainsAllSubRootComponents(upperSourcesRoot, upperTableEntryRoot)))
+                    CanonicalTrackedFilesHelper.RootContainsAllSubRootComponents(upperSourcesRoot, upperTableEntryRoot)))
                 {
                     // Gather the unique outputs for this root
                     OutputsForSourceRoot(outputs, upperTableEntryRoot);
@@ -498,54 +466,18 @@ namespace Microsoft.Build.Utilities
         }
 
         /// <summary>
-        /// Check that the given composite root contains all entries in the composite sub root
-        /// </summary>
-        /// <param name="compositeRoot">The root to look for all sub roots in</param>
-        /// <param name="compositeSubRoot">The root that is comprised of subroots to look for</param>
-        /// <returns></returns>
-        internal bool RootContainsAllSubRootComponents(string compositeRoot, string compositeSubRoot)
-        {
-            bool containsAllSubRoots = true;
-
-            // If the two are identical, then clearly all keys are present
-            if (string.Compare(compositeRoot, compositeSubRoot, StringComparison.OrdinalIgnoreCase) == 0)
-            {
-                return true;
-            }
-            else
-            {
-                // look for each sub key in the main composite key
-                string[] rootComponents = compositeSubRoot.Split('|');
-                foreach (string subRoot in rootComponents)
-                {
-                    containsAllSubRoots &= compositeRoot.Contains(subRoot);
-                    // we didn't find this subkey, so bail out
-                    if (!containsAllSubRoots)
-                    {
-                        break;
-                    }
-                }
-            }
-            return containsAllSubRoots;
-        }
-
-        /// <summary>
         /// This method determines the outputs for a source root (as in the contents of a rooting marker)
         /// </summary>
         /// <param name="outputs">List of outputs to populate</param>
         /// <param name="sourceKey">The source to gather outputs for</param>
         private void OutputsForSourceRoot(Dictionary<string, ITaskItem> outputs, string sourceKey)
         {
-            Dictionary<string, DateTime> dependencies;
-
-            if (_dependencyTable.TryGetValue(sourceKey, out dependencies))
+            if (DependencyTable.TryGetValue(sourceKey, out Dictionary<string, DateTime> dependencies))
             {
                 foreach (string dependee in dependencies.Keys)
                 {
-                    // only if we don't have the output already should we
-                    // add it again
-                    ITaskItem existingTaskItem;
-                    if (!outputs.TryGetValue(dependee, out existingTaskItem))
+                    // only if we don't have the output already should we add it again
+                    if (!outputs.ContainsKey(dependee))
                     {
                         outputs.Add(dependee, new TaskItem(dependee));
                     }
@@ -557,13 +489,10 @@ namespace Microsoft.Build.Utilities
         /// This method adds computed outputs for the given source key to the output graph
         /// </summary>
         /// <param name="sourceKey">The source to add outputs for</param>
-        /// <param name="computedOutputs">The computed outputs for this source key</param>
+        /// <param name="computedOutput">The computed outputs for this source key</param>
         public void AddComputedOutputForSourceRoot(string sourceKey, string computedOutput)
         {
-            Dictionary<string, DateTime> dependencies;
-
-            dependencies = GetSourceKeyOutputs(sourceKey);
-
+            Dictionary<string, DateTime> dependencies = GetSourceKeyOutputs(sourceKey);
             AddOutput(dependencies, computedOutput);
         }
 
@@ -574,10 +503,7 @@ namespace Microsoft.Build.Utilities
         /// <param name="computedOutputs">The computed outputs for this source key</param>
         public void AddComputedOutputsForSourceRoot(string sourceKey, string[] computedOutputs)
         {
-            Dictionary<string, DateTime> dependencies;
-
-            dependencies = GetSourceKeyOutputs(sourceKey);
-
+            Dictionary<string, DateTime> dependencies = GetSourceKeyOutputs(sourceKey);
             foreach (string computedOutput in computedOutputs)
             {
                 AddOutput(dependencies, computedOutput);
@@ -591,10 +517,7 @@ namespace Microsoft.Build.Utilities
         /// <param name="computedOutputs">The computed outputs for this source key</param>
         public void AddComputedOutputsForSourceRoot(string sourceKey, ITaskItem[] computedOutputs)
         {
-            Dictionary<string, DateTime> dependencies;
-
-            dependencies = GetSourceKeyOutputs(sourceKey);
-
+            Dictionary<string, DateTime> dependencies = GetSourceKeyOutputs(sourceKey);
             foreach (ITaskItem computedOutput in computedOutputs)
             {
                 AddOutput(dependencies, FileUtilities.NormalizePath(computedOutput.ItemSpec));
@@ -608,11 +531,10 @@ namespace Microsoft.Build.Utilities
         /// <param name="sourceKey">The source to retrieve outputs for</param>
         private Dictionary<string, DateTime> GetSourceKeyOutputs(string sourceKey)
         {
-            Dictionary<string, DateTime> dependencies;
-            if (!_dependencyTable.TryGetValue(sourceKey, out dependencies))
+            if (!DependencyTable.TryGetValue(sourceKey, out Dictionary<string, DateTime> dependencies))
             {
                 dependencies = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
-                _dependencyTable.Add(sourceKey, dependencies);
+                DependencyTable.Add(sourceKey, dependencies);
             }
             return dependencies;
         }
@@ -622,20 +544,14 @@ namespace Microsoft.Build.Utilities
         /// </summary>
         /// <param name="dependencies">The dictionary to add outputs to</param>
         /// <param name="computedOutput">The computed outputs for this source key</param>
-        private void AddOutput(Dictionary<string, DateTime> dependencies, string computedOutput)
+        private static void AddOutput(Dictionary<string, DateTime> dependencies, string computedOutput)
         {
             string fullComputedOutput = FileUtilities.NormalizePath(computedOutput).ToUpperInvariant();
             if (!dependencies.ContainsKey(fullComputedOutput))
             {
-                DateTime fileModifiedTime;
-                if (FileUtilities.FileExistsNoThrow(fullComputedOutput))
-                {
-                    fileModifiedTime = NativeMethods.GetLastWriteTimeUtc(fullComputedOutput);
-                }
-                else
-                {
-                    fileModifiedTime = DateTime.MinValue;
-                }
+                DateTime fileModifiedTime = FileUtilities.FileExistsNoThrow(fullComputedOutput)
+                    ? NativeMethodsShared.GetLastWriteFileUtcTime(fullComputedOutput)
+                    : DateTime.MinValue;
                 dependencies.Add(fullComputedOutput, fileModifiedTime);
             }
         }
@@ -644,10 +560,7 @@ namespace Microsoft.Build.Utilities
         /// This method will re-write the tlogs from the current output table new entries will
         /// be tracked.
         /// </summary>
-        public void SaveTlog()
-        {
-            SaveTlog(null);
-        }
+        public void SaveTlog() => SaveTlog(null);
 
         /// <summary>
         /// This method will re-write the tlogs from the current output table new entries will
@@ -656,7 +569,7 @@ namespace Microsoft.Build.Utilities
         [SuppressMessage("Microsoft.Naming", "CA1702:CompoundWordsShouldBeCasedCorrectly", MessageId = "TLog", Justification = "Has now shipped as public API; plus it's unclear whether 'Tlog' or 'TLog' is the preferred casing")]
         public void SaveTlog(DependencyFilter includeInTLog)
         {
-            if (_tlogFiles != null && (_tlogFiles.Length > 0))
+            if (_tlogFiles?.Length > 0)
             {
                 string tLogRootingMarker = DependencyTableCache.FormatNormalizedTlogRootingMarker(_tlogFiles);
 
@@ -664,10 +577,7 @@ namespace Microsoft.Build.Utilities
                 {
                     // The tracking logs in the cache will be invalidated by this compaction
                     // remove the cached entries to be sure
-                    if (DependencyTableCache.DependencyTable.ContainsKey(tLogRootingMarker))
-                    {
-                        DependencyTableCache.DependencyTable.Remove(tLogRootingMarker);
-                    }
+                    DependencyTableCache.DependencyTable.Remove(tLogRootingMarker);
                 }
 
                 string firstTlog = _tlogFiles[0].ItemSpec;
@@ -679,11 +589,11 @@ namespace Microsoft.Build.Utilities
                 }
 
                 // Write out the dependency information as a new tlog
-                using (StreamWriter outputs = new StreamWriter(firstTlog, false, System.Text.Encoding.Unicode))
+                using (StreamWriter outputs = FileUtilities.OpenWrite(firstTlog, false, System.Text.Encoding.Unicode))
                 {
-                    foreach (string rootingMarker in _dependencyTable.Keys)
+                    foreach (string rootingMarker in DependencyTable.Keys)
                     {
-                        Dictionary<string, DateTime> dependencies = _dependencyTable[rootingMarker];
+                        Dictionary<string, DateTime> dependencies = DependencyTable[rootingMarker];
                         outputs.WriteLine("^" + rootingMarker);
                         foreach (string file in dependencies.Keys)
                         {
@@ -703,31 +613,20 @@ namespace Microsoft.Build.Utilities
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="source">Sources that should be removed from the graph</param>
-        /// <param name="correspondingOutputs">Outputs that correspond ot the sources (used for same file processing)</param>
-        public void RemoveEntriesForSource(ITaskItem source)
-        {
-            RemoveEntriesForSource(new ITaskItem[] { source }, null);
-        }
+        public void RemoveEntriesForSource(ITaskItem source) => RemoveEntriesForSource(new[] { source }, null);
 
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="source">Sources that should be removed from the graph</param>
-        /// <param name="correspondingOutputs">Outputs that correspond ot the sources (used for same file processing)</param>
-        public void RemoveEntriesForSource(ITaskItem source, ITaskItem correspondingOutput)
-        {
-            RemoveEntriesForSource(new ITaskItem[] { source }, new ITaskItem[] { correspondingOutput });
-        }
+        /// <param name="correspondingOutput">Outputs that correspond ot the sources (used for same file processing)</param>
+        public void RemoveEntriesForSource(ITaskItem source, ITaskItem correspondingOutput) => RemoveEntriesForSource(new[] { source }, new[] { correspondingOutput });
 
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="source">Sources that should be removed from the graph</param>
-        /// <param name="correspondingOutputs">Outputs that correspond ot the sources (used for same file processing)</param>
-        public void RemoveEntriesForSource(ITaskItem[] source)
-        {
-            RemoveEntriesForSource(source, null);
-        }
+        public void RemoveEntriesForSource(ITaskItem[] source) => RemoveEntriesForSource(source, null);
 
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
@@ -740,12 +639,12 @@ namespace Microsoft.Build.Utilities
             string rootMarkerToRemove = FileTracker.FormatRootingMarker(source, correspondingOutputs);
 
             // remove the entry from the graph for the combined root
-            _dependencyTable.Remove(rootMarkerToRemove);
+            DependencyTable.Remove(rootMarkerToRemove);
 
             // remove the entry for each source item
             foreach (ITaskItem sourceItem in source)
             {
-                _dependencyTable.Remove(FileUtilities.NormalizePath(sourceItem.ItemSpec));
+                DependencyTable.Remove(FileUtilities.NormalizePath(sourceItem.ItemSpec));
             }
         }
 
@@ -753,6 +652,7 @@ namespace Microsoft.Build.Utilities
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="sources">Sources that should be removed from the graph</param>
+        /// <param name="dependencyToRemove">The dependency to remove.</param>
         public void RemoveDependencyFromEntry(ITaskItem[] sources, ITaskItem dependencyToRemove)
         {
             string rootingMarker = FileTracker.FormatRootingMarker(sources);
@@ -763,6 +663,7 @@ namespace Microsoft.Build.Utilities
         /// Remove the output graph entries for the given source and corresponding outputs
         /// </summary>
         /// <param name="source">Source that should be removed from the graph</param>
+        /// <param name="dependencyToRemove">The dependency to remove.</param>
         public void RemoveDependencyFromEntry(ITaskItem source, ITaskItem dependencyToRemove)
         {
             string rootingMarker = FileTracker.FormatRootingMarker(source);
@@ -772,13 +673,12 @@ namespace Microsoft.Build.Utilities
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
-        /// <param name="source">Sources that should be removed from the graph</param>
+        /// <param name="rootingMarker">Sources that should be removed from the graph</param>
+        /// <param name="dependencyToRemove">The dependency to remove.</param>
         private void RemoveDependencyFromEntry(string rootingMarker, ITaskItem dependencyToRemove)
         {
             // construct a root marker for the source that will remove the dependency from
-            Dictionary<string, DateTime> dependencies;
-
-            if (_dependencyTable.TryGetValue(rootingMarker, out dependencies))
+            if (DependencyTable.TryGetValue(rootingMarker, out Dictionary<string, DateTime> dependencies))
             {
                 dependencies.Remove(FileUtilities.NormalizePath(dependencyToRemove.ItemSpec));
             }
@@ -792,30 +692,20 @@ namespace Microsoft.Build.Utilities
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="source">Source that should be removed from the graph</param>
-        /// <param name="correspondingOutputs">Output that correspond ot the sources (used for same file processing)</param>
-        public void RemoveDependenciesFromEntryIfMissing(ITaskItem source)
-        {
-            RemoveDependenciesFromEntryIfMissing(new ITaskItem[] { source }, null);
-        }
+        public void RemoveDependenciesFromEntryIfMissing(ITaskItem source) => RemoveDependenciesFromEntryIfMissing(new[] { source }, null);
 
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="source">Source that should be removed from the graph</param>
-        /// <param name="correspondingOutputs">Output that correspond ot the sources (used for same file processing)</param>
-        public void RemoveDependenciesFromEntryIfMissing(ITaskItem source, ITaskItem correspondingOutput)
-        {
-            RemoveDependenciesFromEntryIfMissing(new ITaskItem[] { source }, new ITaskItem[] { correspondingOutput });
-        }
+        /// <param name="correspondingOutput">Output that correspond ot the sources (used for same file processing)</param>
+        public void RemoveDependenciesFromEntryIfMissing(ITaskItem source, ITaskItem correspondingOutput) => RemoveDependenciesFromEntryIfMissing(new[] { source }, new[] { correspondingOutput });
 
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
         /// </summary>
         /// <param name="source">Sources that should be removed from the graph</param>
-        public void RemoveDependenciesFromEntryIfMissing(ITaskItem[] source)
-        {
-            RemoveDependenciesFromEntryIfMissing(source, null);
-        }
+        public void RemoveDependenciesFromEntryIfMissing(ITaskItem[] source) => RemoveDependenciesFromEntryIfMissing(source, null);
 
         /// <summary>
         /// Remove the output graph entries for the given sources and corresponding outputs
@@ -824,6 +714,9 @@ namespace Microsoft.Build.Utilities
         /// <param name="correspondingOutputs">Outputs that correspond ot the sources (used for same file processing)</param>
         public void RemoveDependenciesFromEntryIfMissing(ITaskItem[] source, ITaskItem[] correspondingOutputs)
         {
+            // Cache of files and whether or not they exist.
+            Dictionary<string, bool> fileCache = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
             if (correspondingOutputs != null)
             {
                 ErrorUtilities.VerifyThrowArgument(source.Length == correspondingOutputs.Length, "Tracking_SourcesAndCorrespondingOutputMismatch");
@@ -832,21 +725,15 @@ namespace Microsoft.Build.Utilities
             // construct a combined root marker for the sources and outputs to remove from the graph
             string rootingMarker = FileTracker.FormatRootingMarker(source, correspondingOutputs);
 
-            RemoveDependenciesFromEntryIfMissing(rootingMarker);
+            RemoveDependenciesFromEntryIfMissing(rootingMarker, fileCache);
 
             // Remove entries for each individual source
             for (int sourceIndex = 0; sourceIndex < source.Length; sourceIndex++)
             {
-                if (correspondingOutputs != null)
-                {
-                    rootingMarker = FileTracker.FormatRootingMarker(source[sourceIndex], correspondingOutputs[sourceIndex]);
-                }
-                else
-                {
-                    rootingMarker = FileTracker.FormatRootingMarker(source[sourceIndex]);
-                }
-
-                RemoveDependenciesFromEntryIfMissing(rootingMarker);
+                rootingMarker = correspondingOutputs != null
+                    ? FileTracker.FormatRootingMarker(source[sourceIndex], correspondingOutputs[sourceIndex])
+                    : FileTracker.FormatRootingMarker(source[sourceIndex]);
+                RemoveDependenciesFromEntryIfMissing(rootingMarker, fileCache);
             }
         }
 
@@ -854,23 +741,33 @@ namespace Microsoft.Build.Utilities
         /// Remove the output graph entries for the given rooting marker
         /// </summary>
         /// <param name="rootingMarker"></param>
-        private void RemoveDependenciesFromEntryIfMissing(string rootingMarker)
+        /// <param name="fileCache">The cache used to store whether each file exists or not.</param>
+        private void RemoveDependenciesFromEntryIfMissing(string rootingMarker, Dictionary<string, bool> fileCache)
         {
-            Dictionary<string, DateTime> dependencies;
-
             // In the event of incomplete tracking information (i.e. this root was not present), just continue quietly
-            // as the user could have killed the tool being tracked, or another error occured during its execution.
-            if (_dependencyTable.TryGetValue(rootingMarker, out dependencies))
+            // as the user could have killed the tool being tracked, or another error occurred during its execution.
+            if (DependencyTable.TryGetValue(rootingMarker, out Dictionary<string, DateTime> dependencies))
             {
-                Dictionary<string, DateTime> dependenciesWithoutMissingFiles = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+                var dependenciesWithoutMissingFiles = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
                 int keyIndex = 0;
 
                 foreach (string file in dependencies.Keys)
                 {
                     if (keyIndex++ > 0)
                     {
-                        // If we are ignoring missing files, then only record those that exist
-                        if (FileUtilities.FileExistsNoThrow(file))
+                        // Record whether or not each file exists and cache it.
+                        // We do this to save time (On^2), at the expense of data O(n).
+                        bool inFileCache = fileCache.TryGetValue(file, out bool fileExists);
+
+                        // Have we cached the file yet? If not, cache its existence.
+                        if (!inFileCache)
+                        {
+                            fileExists = FileUtilities.FileExistsNoThrow(file);
+                            fileCache.Add(file, fileExists);
+                        }
+
+                        // Does the cached file exist?
+                        if (fileExists)
                         {
                             dependenciesWithoutMissingFiles.Add(file, dependencies[file]);
                         }
@@ -881,9 +778,11 @@ namespace Microsoft.Build.Utilities
                     }
                 }
 
-                _dependencyTable[rootingMarker] = dependenciesWithoutMissingFiles;
+                DependencyTable[rootingMarker] = dependenciesWithoutMissingFiles;
             }
         }
         #endregion
     }
 }
+
+#endif

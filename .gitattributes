@@ -1,80 +1,26 @@
 ###############################################################################
 # Set default behavior to automatically normalize line endings.
 ###############################################################################
-
-[attr]wintext text eol=crlf
-
 * text=auto
 
-# Default
-*.* wintext
+# Force bash scripts to always use lf line endings so that if a repro is accessed
+# in Unix via a file share from Windows, the scripts will work.
+*.sh text eol=lf
 
-# Build Specifications
-*.sln	wintext
-*.props	wintext
-*.proj	wintext
-*.targets	wintext
-*.tasks	wintext
-*.overridetasks	wintext
-*.csproj	wintext
-*.rptproj	wintext
-*.vcxproj	wintext
-*.filters	wintext
-*.cd	wintext
+# Ensure .bin files are stored as binary
+*.bin binary
 
-# Sources (Managed)
-*.cs	wintext
-*.vb	wintext
-*.resx	wintext
-*.xaml	wintext
-*.config	wintext
-*.manifest	wintext
-*.txt	wintext
-*.tst	wintext
+###############################################################################
+# Linguist customization (https://github.com/github/linguist#overrides)
+###############################################################################
 
-# Sources (Web)
-*.html	wintext
-*.css	wintext
-*.js	wintext
+# Include MSBuild in repo stats
+src/Tasks/*.props linguist-detectable=true
+src/Tasks/*.targets linguist-detectable=true
+src/Tasks/*.tasks linguist-detectable=true
 
-# Sources (Native)
-*.h	wintext
-*.cpp	wintext
-*.rc	wintext
+# Don't include Arcade-owned path
+eng/common/** linguist-vendored linguist-generated
 
-# Sources (Xml)
-*.xml	wintext
-*.xsl	wintext
-*.xsd	wintext
-
-# Sources (Script)
-*.cmd	wintext
-*.bat	wintext
-*.rsp	wintext
-*.sample wintext
-
-
-# Sources (Binary)
-*.doc  binary
-*.ico  binary
-*.appx binary
-
-# Configuration
-*.gitattributes	wintext
-*.gitignore	wintext
-
-#Binaries
-*.exe  binary
-*.dll  binary
-*.obj  binary
-*.pdb  binary
-*.zip  binary
-*.chm  binary
-*.nupkg  binary
-*.lex binary
-*.ocx binary
-*.mui binary
-
-#Images (Binary)
-*.png binary
-*.jpg binary
+# Display XLF files collapsed by default in PR diffs
+*.xlf linguist-generated=true

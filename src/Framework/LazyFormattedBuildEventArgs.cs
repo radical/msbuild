@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Event args for any build event.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Globalization;
@@ -21,18 +17,33 @@ namespace Microsoft.Build.Framework
         /// <summary>
         /// Stores the message arguments.
         /// </summary>
-        private object[] _arguments;
+        private object[] arguments;
+
+        /// <summary>
+        /// Exposes the underlying arguments field to serializers.
+        /// </summary>
+        internal object[] RawArguments
+        {
+            get => arguments;
+            set => arguments = value;
+        }
 
         /// <summary>
         /// Stores the original culture for String.Format.
         /// </summary>
-        private CultureInfo _originalCulture;
+        private string originalCultureName;
+
+        /// <summary>
+        /// Non-serializable CultureInfo object
+        /// </summary>
+        [NonSerialized]
+        private CultureInfo originalCultureInfo;
 
         /// <summary>
         /// Lock object.
         /// </summary>
         [NonSerialized]
-        private Object _locker;
+        protected Object locker;
 
         /// <summary>
         /// This constructor allows all event data to be initialized.
@@ -68,9 +79,10 @@ namespace Microsoft.Build.Framework
         )
             : base(message, helpKeyword, senderName, eventTimestamp)
         {
-            _arguments = messageArgs;
-            _originalCulture = CultureInfo.CurrentCulture;
-            _locker = new Object();
+            arguments = messageArgs;
+            originalCultureName = CultureInfo.CurrentCulture.Name;
+            originalCultureInfo = CultureInfo.CurrentCulture;
+            locker = new Object();
         }
 
         /// <summary>
@@ -79,7 +91,7 @@ namespace Microsoft.Build.Framework
         protected LazyFormattedBuildEventArgs()
             : base()
         {
-            _locker = new Object();
+            locker = new Object();
         }
 
         /// <summary>
@@ -89,12 +101,17 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                lock (_locker)
+                lock (locker)
                 {
-                    if (_arguments != null && _arguments.Length > 0)
+                    if (arguments?.Length > 0)
                     {
-                        base.Message = FormatString(_originalCulture, base.Message, _arguments);
-                        _arguments = null;
+                        if (originalCultureInfo == null)
+                        {
+                            originalCultureInfo = new CultureInfo(originalCultureName);
+                        }
+
+                        base.Message = FormatString(originalCultureInfo, base.Message, arguments);
+                        arguments = null;
                     }
                 }
 
@@ -111,21 +128,21 @@ namespace Microsoft.Build.Framework
             // Locking is needed here as this is invoked on the serialization thread,
             // whereas a local logger (a distributed logger) may concurrently invoke this.Message
             // which will trigger formatting and thus the exception below
-            lock (_locker)
+            lock (locker)
             {
-                bool hasArguments = _arguments != null;
+                bool hasArguments = arguments != null;
                 base.WriteToStream(writer);
 
-                if (hasArguments && _arguments == null)
+                if (hasArguments && arguments == null)
                 {
                     throw new InvalidOperationException("BuildEventArgs has formatted message while serializing!");
                 }
 
-                if (_arguments != null)
+                if (arguments != null)
                 {
-                    writer.Write(_arguments.Length);
+                    writer.Write(arguments.Length);
 
-                    foreach (object argument in _arguments)
+                    foreach (object argument in arguments)
                     {
                         // Arguments may be ints, etc, so explicitly convert
                         // Convert.ToString returns String.Empty when it cannot convert, rather than throwing
@@ -134,10 +151,10 @@ namespace Microsoft.Build.Framework
                 }
                 else
                 {
-                    writer.Write((Int32)(-1));
+                    writer.Write(-1);
                 }
 
-                writer.Write(_originalCulture != null ? _originalCulture.LCID : 0);
+                writer.Write(originalCultureName);
             }
         }
 
@@ -165,20 +182,9 @@ namespace Microsoft.Build.Framework
                     }
                 }
 
-                _arguments = messageArgs;
+                arguments = messageArgs;
 
-                int originalCultureId = reader.ReadInt32();
-                if (originalCultureId != 0)
-                {
-                    if (originalCultureId == CultureInfo.CurrentCulture.LCID)
-                    {
-                        _originalCulture = CultureInfo.CurrentCulture;
-                    }
-                    else
-                    {
-                        _originalCulture = new CultureInfo(originalCultureId);
-                    }
-                }
+                originalCultureName = reader.ReadString();
             }
         }
 
@@ -199,48 +205,9 @@ namespace Microsoft.Build.Framework
             string formatted = unformatted;
 
             // NOTE: String.Format() does not allow a null arguments array
-            if ((args != null) && (args.Length > 0))
+            if ((args?.Length > 0))
             {
-#if DEBUG && !BUILDING_DF_LKG
-
-#if VALIDATERESOURCESTRINGS
-                // The code below reveals many places in our codebase where
-                // we're not using all of the data given to us to format
-                // strings -- but there are too many to presently fix.
-                // Rather than toss away the code, we should later build it
-                // and fix each offending resource (or the code processing
-                // the resource).
-
-                // String.Format() will throw a FormatException if args does
-                // not have enough elements to match each format parameter.
-                // However, it provides no feedback in the case when args contains
-                // more elements than necessary to replace each format 
-                // parameter.  We'd like to know if we're providing too much
-                // data in cases like these, so we'll fail if this code runs.
-                                                
-                // We create an array with one fewer element
-                object[] trimmedArgs = new object[args.Length - 1];
-                Array.Copy(args, 0, trimmedArgs, 0, args.Length - 1);
-
-                bool caughtFormatException = false;
-                try
-                {
-                    // This will throw if there aren't enough elements in trimmedArgs...
-                    String.Format(CultureInfo.CurrentCulture, unformatted, trimmedArgs);
-                }
-                catch (FormatException)
-                {
-                    caughtFormatException = true;
-                }
-
-                // If we didn't catch an exception above, then some of the elements
-                // of args were unnecessary when formatting unformatted...
-                Debug.Assert
-                (
-                    caughtFormatException,
-                    String.Format("The provided format string '{0}' had fewer format parameters than the number of format args, '{1}'.", unformatted, args.Length)
-                );
-#endif
+#if DEBUG
                 // If you accidentally pass some random type in that can't be converted to a string, 
                 // FormatResourceString calls ToString() which returns the full name of the type!
                 foreach (object param in args)
@@ -290,7 +257,7 @@ namespace Microsoft.Build.Framework
         [OnDeserialized]
         private void OnDeserialized(StreamingContext context)
         {
-            _locker = new Object();
+            locker = new Object();
         }
     }
 }

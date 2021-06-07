@@ -3,11 +3,6 @@
 
 using System;
 using System.IO;
-using System.Text;
-using System.Resources;
-using System.Reflection;
-using System.Collections;
-using System.Globalization;
 
 namespace Microsoft.Build.Shared.LanguageParser
 {
@@ -153,7 +148,7 @@ namespace Microsoft.Build.Shared.LanguageParser
                 }
 
                 // Make an upper-case version in order to check whether this may be a keyword.
-                string upper = identifierOrKeyword.ToUpper(CultureInfo.InvariantCulture);
+                string upper = identifierOrKeyword.ToUpperInvariant();
 
                 switch (upper)
                 {

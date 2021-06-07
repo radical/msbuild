@@ -2,21 +2,18 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.Text;
 
 namespace Microsoft.Build.Framework
 {
     /// <summary>
     /// Arguments for external project finished events
     /// </summary>
-    /// <remarks>
-    /// WARNING: marking a type [Serializable] without implementing
-    /// ISerializable imposes a serialization contract -- it is a
-    /// promise to never change the type's fields i.e. the type is
-    /// immutable; adding new fields in the next version of the type
-    /// without following certain special FX guidelines, can break both
-    /// forward and backward compatibility
-    /// </remarks>
+    // WARNING: marking a type [Serializable] without implementing
+    // ISerializable imposes a serialization contract -- it is a
+    // promise to never change the type's fields i.e. the type is
+    // immutable; adding new fields in the next version of the type
+    // without following certain special FX guidelines, can break both
+    // forward and backward compatibility
     [Serializable]
     public class ExternalProjectFinishedEventArgs : CustomBuildEventArgs
     {
@@ -69,11 +66,11 @@ namespace Microsoft.Build.Framework
         )
             : base(message, helpKeyword, senderName, eventTimestamp)
         {
-            _projectFile = projectFile;
-            _succeeded = succeeded;
+            this.projectFile = projectFile;
+            this.succeeded = succeeded;
         }
 
-        private string _projectFile;
+        private string projectFile;
 
         /// <summary>
         /// Project name
@@ -82,11 +79,11 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _projectFile;
+                return projectFile;
             }
         }
 
-        private bool _succeeded;
+        private bool succeeded;
 
         /// <summary>
         /// True if project built successfully, false otherwise
@@ -95,7 +92,7 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _succeeded;
+                return succeeded;
             }
         }
     }

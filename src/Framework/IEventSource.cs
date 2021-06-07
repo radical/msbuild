@@ -1,8 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Runtime.InteropServices;
-
 namespace Microsoft.Build.Framework
 {
     /// <summary>
@@ -148,7 +146,7 @@ namespace Microsoft.Build.Framework
         event BuildStatusEventHandler StatusEventRaised;
 
         /// <summary>
-        /// this event is raised to log any build event
+        /// this event is raised to log any build event.  These events do not include telemetry.  To receive telemetry, you must attach to the <see cref="IEventSource2.TelemetryLogged"/> event.
         /// </summary>
         event AnyEventHandler AnyEventRaised;
     }

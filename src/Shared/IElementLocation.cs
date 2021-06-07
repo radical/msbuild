@@ -1,12 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>An internal interface used to represent element locations for run-time error reporting.</summary>
-//-----------------------------------------------------------------------
 
-using System;
-using Microsoft.Build.Framework;
 using Microsoft.Build.BackEnd;
 
 namespace Microsoft.Build.Shared
@@ -19,7 +13,7 @@ namespace Microsoft.Build.Shared
     /// This is not public because the current implementation only provides correct data for unedited projects.
     /// DO NOT make it public without considering a solution to this problem.
     /// </summary>
-    internal interface IElementLocation : INodePacketTranslatable
+    internal interface IElementLocation : ITranslatable
     {
         /// <summary>
         /// The file from which this particular element originated.  It may

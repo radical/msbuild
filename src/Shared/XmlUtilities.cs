@@ -3,7 +3,6 @@
 
 using System;
 using System.Xml;
-using System.Text.RegularExpressions;
 using Microsoft.Build.Construction;
 
 namespace Microsoft.Build.Shared
@@ -49,15 +48,14 @@ namespace Microsoft.Build.Shared
                 newElement.AppendChild(oldElement.FirstChild);
             }
 
-            if (oldElement.ParentNode != null)
-            {
+               
+            
                 // Add the new element in the same place the old element was.
-                oldElement.ParentNode.ReplaceChild(newElement, oldElement);
-            }
+                oldElement.ParentNode?.ReplaceChild(newElement, oldElement);
+            
 
             return newElement;
         }
-
 
         /// <summary>
         /// Verifies that a name is valid for the name of an item, property, or piece of metadata.
@@ -70,7 +68,7 @@ namespace Microsoft.Build.Shared
         /// <param name="name">name to validate</param>
         internal static void VerifyThrowArgumentValidElementName(string name)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(name, "name");
+            ErrorUtilities.VerifyThrowArgumentLength(name, nameof(name));
 
             int firstInvalidCharLocation = LocateFirstInvalidElementNameCharacter(name);
 
@@ -89,7 +87,7 @@ namespace Microsoft.Build.Shared
         /// </remarks>
         internal static void VerifyThrowProjectValidElementName(string name, IElementLocation location)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(name, "name");
+            ErrorUtilities.VerifyThrowArgumentLength(name, nameof(name));
             int firstInvalidCharLocation = LocateFirstInvalidElementNameCharacter(name);
 
             if (-1 != firstInvalidCharLocation)
@@ -126,7 +124,7 @@ namespace Microsoft.Build.Shared
         /// <returns>true, if name is valid</returns>
         internal static bool IsValidElementName(string name)
         {
-            return (LocateFirstInvalidElementNameCharacter(name) == -1);
+            return LocateFirstInvalidElementNameCharacter(name) == -1;
         }
 
         /// <summary>
@@ -165,64 +163,6 @@ namespace Microsoft.Build.Shared
 
             // If we got here, the name was valid.
             return -1;
-        }
-
-        /// <summary>
-        /// Load the xml file using XMLTextReader and locate the element and attribute specified and then 
-        /// return the value. This is a quick way to peek at the xml file whithout having the go through 
-        /// the XMLDocument (MSDN article (Chapter 9 - Improving XML Performance)).
-        /// Does not throw for IO or XML issues.
-        /// Returns null if the attribute is not present.
-        /// </summary>
-        internal static string SniffAttributeValueFromXmlFile
-            (
-            string projectFileName,
-            string elementName,
-            string attributeName
-            )
-        {
-            string attributeValue = null;
-
-            try
-            {
-                using (XmlTextReader xmlReader = new XmlTextReader(projectFileName))
-                {
-                    xmlReader.DtdProcessing = DtdProcessing.Ignore;
-                    while (xmlReader.Read())
-                    {
-                        if (xmlReader.NodeType == XmlNodeType.Element)
-                        {
-                            if (String.Compare(xmlReader.Name, elementName, StringComparison.OrdinalIgnoreCase) == 0)
-                            {
-                                if (xmlReader.HasAttributes)
-                                {
-                                    for (int i = 0; i < xmlReader.AttributeCount; i++)
-                                    {
-                                        xmlReader.MoveToAttribute(i);
-                                        if (String.Compare(xmlReader.Name, attributeName, StringComparison.OrdinalIgnoreCase) == 0)
-                                        {
-                                            attributeValue = xmlReader.Value;
-                                            break;
-                                        }
-                                    }
-                                }
-                                // if we have already located the element then we are done
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Ignore any IO or XML exceptions as it will be caught later on
-                if (ExceptionHandling.NotExpectedIoOrXmlException(ex))
-                {
-                    throw;
-                }
-            }
-
-            return attributeValue;
         }
 
         internal static bool IsValidInitialElementNameCharacter(char c)

@@ -1,14 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A debug only helper for tracing.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
@@ -69,7 +63,7 @@ namespace Microsoft.Build.Internal
                 s_interval = TimeSpan.FromSeconds(1);
             }
 
-            s_currentAssemblyName = Assembly.GetExecutingAssembly().GetName().Name;
+            s_currentAssemblyName = typeof(Tracing).GetTypeInfo().Assembly.GetName().Name;
 
             // Trace.WriteLine(new string('/', 100));
             // Trace.WriteLine("interval: " + interval.Seconds);

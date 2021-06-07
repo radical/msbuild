@@ -1,12 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
-using System.IO;
-using System.Text;
-using System.Resources;
-using System.Reflection;
-using System.Collections;
 using System.Globalization;
 
 namespace Microsoft.Build.Shared.LanguageParser
@@ -38,7 +32,7 @@ namespace Microsoft.Build.Shared.LanguageParser
         /// <returns></returns>
         static internal bool IsLetter(char c)
         {
-            UnicodeCategory cat = Char.GetUnicodeCategory(c);
+            UnicodeCategory cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
 
             // From 2.4.2 of the C# Language Specification
             // letter-character:
@@ -63,7 +57,7 @@ namespace Microsoft.Build.Shared.LanguageParser
         /// <returns></returns>
         static internal bool IsDecimalDigit(char c)
         {
-            UnicodeCategory cat = Char.GetUnicodeCategory(c);
+            UnicodeCategory cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
 
             // From 2.4.2 of the C# Language Specification
             // decimal-digit-character:
@@ -83,7 +77,7 @@ namespace Microsoft.Build.Shared.LanguageParser
         /// <returns></returns>
         static internal bool IsConnecting(char c)
         {
-            UnicodeCategory cat = Char.GetUnicodeCategory(c);
+            UnicodeCategory cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
 
             // From 2.4.2 of the C# Language Specification
             // connecting-character:
@@ -104,7 +98,7 @@ namespace Microsoft.Build.Shared.LanguageParser
         /// <returns></returns>
         static internal bool IsCombining(char c)
         {
-            UnicodeCategory cat = Char.GetUnicodeCategory(c);
+            UnicodeCategory cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
 
             // From 2.4.2 of the C# Language Specification
             // combining-character:
@@ -125,7 +119,7 @@ namespace Microsoft.Build.Shared.LanguageParser
         /// <returns></returns>
         static internal bool IsFormatting(char c)
         {
-            UnicodeCategory cat = Char.GetUnicodeCategory(c);
+            UnicodeCategory cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
 
             // From 2.4.2 of the C# Language Specification
             // formatting-character:
@@ -168,7 +162,7 @@ namespace Microsoft.Build.Shared.LanguageParser
         {
             if
             (
-                (c >= '0' && c <= '7')
+                c >= '0' && c <= '7'
             )
             {
                 return true;

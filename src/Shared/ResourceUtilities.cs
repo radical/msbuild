@@ -6,12 +6,7 @@ using System.Resources;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Text.RegularExpressions;
-#if DEBUG && !BUILDING_DF_LKG
-using Microsoft.Build.Framework;
-#endif
-using System.Reflection;
-using System.Text;
+using System.ComponentModel;
 
 #if BUILDINGAPPXTASKS
 namespace Microsoft.Build.AppxPackage.Shared
@@ -40,7 +35,7 @@ namespace Microsoft.Build.Shared
         internal static string ExtractMessageCode(bool msbuildCodeOnly, string message, out string code)
         {
 #if !BUILDINGAPPXTASKS
-            ErrorUtilities.VerifyThrowInternalNull(message, "message");
+            ErrorUtilities.VerifyThrowInternalNull(message, nameof(message));
 #endif
 
             code = null;
@@ -71,7 +66,7 @@ namespace Microsoft.Build.Shared
 
                 code = message.Substring(i, 7);
 
-                i = i + 8;
+                i += 8;
             }
             else
 #endif
@@ -138,7 +133,7 @@ namespace Microsoft.Build.Shared
         /// <returns>The MSBuild F1-help keyword string.</returns>
         private static string GetHelpKeyword(string resourceName)
         {
-            return ("MSBuild." + resourceName);
+            return "MSBuild." + resourceName;
         }
 
 #if !BUILDINGAPPXTASKS
@@ -166,12 +161,19 @@ namespace Microsoft.Build.Shared
         /// <param name="resourceName">Resource string to load.</param>
         /// <param name="args">Optional arguments for formatting the resource string.</param>
         /// <returns>The formatted resource string.</returns>
-        internal static string FormatResourceString(out string code, out string helpKeyword, string resourceName, params object[] args)
+        internal static string FormatResourceStringStripCodeAndKeyword(out string code, out string helpKeyword, string resourceName, params object[] args)
         {
             helpKeyword = GetHelpKeyword(resourceName);
 
             // NOTE: the AssemblyResources.GetString() method is thread-safe
             return ExtractMessageCode(true /* msbuildCodeOnly */, FormatString(GetResourceString(resourceName), args), out code);
+        }
+
+        [Obsolete("Use GetResourceString instead.", true)]
+        [EditorBrowsable(EditorBrowsableState.Never)]
+        internal static string FormatResourceString(string resourceName)
+        {   // Avoids an accidental dependency on FormatResourceString(string, params object[])
+            return null;
         }
 
         /// <summary>
@@ -185,12 +187,25 @@ namespace Microsoft.Build.Shared
         /// <param name="resourceName">Resource string to load.</param>
         /// <param name="args">Optional arguments for formatting the resource string.</param>
         /// <returns>The formatted resource string.</returns>
-        internal static string FormatResourceString(string resourceName, params object[] args)
+        internal static string FormatResourceStringStripCodeAndKeyword(string resourceName, params object[] args)
         {
             string code;
             string helpKeyword;
 
-            return FormatResourceString(out code, out helpKeyword, resourceName, args);
+            return FormatResourceStringStripCodeAndKeyword(out code, out helpKeyword, resourceName, args);
+        }
+
+        /// <summary>
+        /// Formats the resource string with the given arguments.
+        /// Ignores error codes and keywords
+        /// </summary>
+        /// <param name="resourceName"></param>
+        /// <param name="args"></param>
+        /// <returns></returns>
+        internal static string FormatResourceStringIgnoreCodeAndKeyword(string resourceName, params object[] args)
+        {
+            // NOTE: the AssemblyResources.GetString() method is thread-safe
+            return FormatString(GetResourceString(resourceName), args);
         }
 
         /// <summary>
@@ -209,48 +224,9 @@ namespace Microsoft.Build.Shared
             string formatted = unformatted;
 
             // NOTE: String.Format() does not allow a null arguments array
-            if ((args != null) && (args.Length > 0))
+            if ((args?.Length > 0))
             {
-#if DEBUG && !BUILDING_DF_LKG
-
-#if VALIDATERESOURCESTRINGS
-                // The code below reveals many places in our codebase where
-                // we're not using all of the data given to us to format
-                // strings -- but there are too many to presently fix.
-                // Rather than toss away the code, we should later build it
-                // and fix each offending resource (or the code processing
-                // the resource).
-
-                // String.Format() will throw a FormatException if args does
-                // not have enough elements to match each format parameter.
-                // However, it provides no feedback in the case when args contains
-                // more elements than necessary to replace each format 
-                // parameter.  We'd like to know if we're providing too much
-                // data in cases like these, so we'll fail if this code runs.
-                                                
-                // We create an array with one fewer element
-                object[] trimmedArgs = new object[args.Length - 1];
-                Array.Copy(args, 0, trimmedArgs, 0, args.Length - 1);
-
-                bool caughtFormatException = false;
-                try
-                {
-                    // This will throw if there aren't enough elements in trimmedArgs...
-                    String.Format(CultureInfo.CurrentCulture, unformatted, trimmedArgs);
-                }
-                catch (FormatException)
-                {
-                    caughtFormatException = true;
-                }
-
-                // If we didn't catch an exception above, then some of the elements
-                // of args were unnecessary when formatting unformatted...
-                Debug.Assert
-                (
-                    caughtFormatException,
-                    String.Format("The provided format string '{0}' had fewer format parameters than the number of format args, '{1}'.", unformatted, args.Length)
-                );
-#endif
+#if DEBUG
                 // If you accidentally pass some random type in that can't be converted to a string, 
                 // FormatResourceString calls ToString() which returns the full name of the type!
                 foreach (object param in args)
@@ -296,17 +272,23 @@ namespace Microsoft.Build.Shared
             }
             catch (ArgumentException e)
             {
+#if FEATURE_DEBUG_LAUNCH
                 Debug.Fail("The resource string \"" + resourceName + "\" was not found.");
+#endif
                 ErrorUtilities.ThrowInternalError(e.Message);
             }
             catch (InvalidOperationException e)
             {
+#if FEATURE_DEBUG_LAUNCH
                 Debug.Fail("The resource string \"" + resourceName + "\" was not found.");
+#endif
                 ErrorUtilities.ThrowInternalError(e.Message);
             }
             catch (MissingManifestResourceException e)
             {
+#if FEATURE_DEBUG_LAUNCH
                 Debug.Fail("The resource string \"" + resourceName + "\" was not found.");
+#endif
                 ErrorUtilities.ThrowInternalError(e.Message);
             }
 #endif

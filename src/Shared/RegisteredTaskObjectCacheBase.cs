@@ -1,13 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Implements a cache for registered task objects.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using Microsoft.Build.Framework;
 
 #if BUILD_ENGINE
@@ -33,6 +28,7 @@ namespace Microsoft.Build.Shared
         /// </summary>
         private Lazy<ConcurrentDictionary<object, object>> _buildLifetimeObjects = new Lazy<ConcurrentDictionary<object, object>>();
 
+#if FEATURE_APPDOMAIN
         /// <summary>
         /// Static constructor which registers a callback to dispose of AppDomain-lifetime cache objects.
         /// </summary>
@@ -43,6 +39,7 @@ namespace Microsoft.Build.Shared
                 DisposeObjects(s_appDomainLifetimeObjects);
             });
         }
+#endif
 
         #region IRegisteredTaskObjectCache
 
@@ -62,10 +59,7 @@ namespace Microsoft.Build.Shared
         {
             ConcurrentDictionary<object, object> dict = GetCollectionForLifetime(lifetime, dontCreate: false);
 
-            if (dict != null)
-            {
-                dict.TryAdd(key, obj);
-            }
+            dict?.TryAdd(key, obj);
         }
 
         /// <summary>
@@ -75,10 +69,7 @@ namespace Microsoft.Build.Shared
         {
             ConcurrentDictionary<object, object> dict = GetCollectionForLifetime(lifetime, dontCreate: true);
             object obj = null;
-            if (dict != null)
-            {
-                dict.TryGetValue(key, out obj);
-            }
+            dict?.TryGetValue(key, out obj);
 
             return obj;
         }
@@ -90,10 +81,7 @@ namespace Microsoft.Build.Shared
         {
             ConcurrentDictionary<object, object> dict = GetCollectionForLifetime(lifetime, dontCreate: true);
             object obj = null;
-            if (dict != null)
-            {
-                dict.TryRemove(key, out obj);
-            }
+            dict?.TryRemove(key, out obj);
 
             return obj;
         }
@@ -157,10 +145,7 @@ namespace Microsoft.Build.Shared
                     try
                     {
                         IDisposable disposable = obj as IDisposable;
-                        if (disposable != null)
-                        {
-                            disposable.Dispose();
-                        }
+                        disposable?.Dispose();
                     }
                     catch (Exception ex)
                     {

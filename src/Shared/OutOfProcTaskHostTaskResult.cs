@@ -1,14 +1,8 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>The class representing a result from running a task in the 
-// out-of-proc task host.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 
 using Microsoft.Build.BackEnd;
 
@@ -66,7 +60,7 @@ namespace Microsoft.Build.Shared
                 result == TaskCompleteType.CrashedDuringExecution ||
                 result == TaskCompleteType.CrashedAfterExecution)
             {
-                ErrorUtilities.VerifyThrowInternalNull(taskException, "taskException");
+                ErrorUtilities.VerifyThrowInternalNull(taskException, nameof(taskException));
             }
 
             if (exceptionMessage != null)
@@ -80,7 +74,7 @@ namespace Microsoft.Build.Shared
                     );
             }
 
-            if (exceptionMessageArgs != null && exceptionMessageArgs.Length > 0)
+            if (exceptionMessageArgs?.Length > 0)
             {
                 ErrorUtilities.VerifyThrow(exceptionMessage != null, "If we have message args, we need a message.");
             }

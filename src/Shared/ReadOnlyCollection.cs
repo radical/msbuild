@@ -1,14 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A read-only wrapper around an ICollection&lt;K&gt;</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Collections;
 using Microsoft.Build.Shared;
 
@@ -132,7 +127,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         public void CopyTo(T[] array, int arrayIndex)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(array, "array");
+            ErrorUtilities.VerifyThrowArgumentNull(array, nameof(array));
 
             ICollection<T> backingCollection = _backing as ICollection<T>;
             if (backingCollection != null)
@@ -188,7 +183,7 @@ namespace Microsoft.Build.Collections
         /// </summary>
         void ICollection.CopyTo(Array array, int index)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(array, "array");
+            ErrorUtilities.VerifyThrowArgumentNull(array, nameof(array));
 
             int i = index;
             foreach (T entry in _backing)

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
+using Microsoft.NET.StringTools;
+
 namespace Microsoft.Build.Shared
 {
     /// <summary>
@@ -24,38 +26,38 @@ namespace Microsoft.Build.Shared
         /// </summary>
         private static Dictionary<string, string> s_unescapedToEscapedStrings = new Dictionary<string, string>(StringComparer.Ordinal);
 
-        /// <summary>
-        /// Replaces all instances of %XX in the input string with the character represented
-        /// by the hexadecimal number XX. 
-        /// </summary>
-        /// <param name="escapedString">The string to unescape.</param>
-        /// <returns>unescaped string</returns>
-        internal static string UnescapeAll
-        (
-            string escapedString
-        )
+        private static bool TryDecodeHexDigit(char character, out int value)
         {
-            bool throwAwayBool;
-            return UnescapeAll(escapedString, out throwAwayBool);
+            if (character >= '0' && character <= '9')
+            {
+                value = character - '0';
+                return true;
+            }
+            if (character >= 'A' && character <= 'F')
+            {
+                value = character - 'A' + 10;
+                return true;
+            }
+            if (character >= 'a' && character <= 'f')
+            {
+                value = character - 'a' + 10;
+                return true;
+            }
+            value = default;
+            return false;
         }
 
         /// <summary>
         /// Replaces all instances of %XX in the input string with the character represented
-        /// by the hexadecimal number XX. 
+        /// by the hexadecimal number XX.
         /// </summary>
         /// <param name="escapedString">The string to unescape.</param>
-        /// <param name="escapingWasNecessary">Whether any replacements were made.</param>
+        /// <param name="trim">If the string should be trimmed before being unescaped.</param>
         /// <returns>unescaped string</returns>
-        internal static string UnescapeAll
-        (
-            string escapedString,
-            out bool escapingWasNecessary
-        )
+        internal static string UnescapeAll(string escapedString, bool trim = false)
         {
-            escapingWasNecessary = false;
-
-            // If the string doesn't contain anything, then by definition it doesn't 
-            // need unescaping. 
+            // If the string doesn't contain anything, then by definition it doesn't
+            // need unescaping.
             if (String.IsNullOrEmpty(escapedString))
             {
                 return escapedString;
@@ -66,13 +68,29 @@ namespace Microsoft.Build.Shared
             int indexOfPercent = escapedString.IndexOf('%');
             if (indexOfPercent == -1)
             {
-                return escapedString;
+                return trim ? escapedString.Trim() : escapedString;
             }
 
             // This is where we're going to build up the final string to return to the caller.
             StringBuilder unescapedString = StringBuilderCache.Acquire(escapedString.Length);
 
             int currentPosition = 0;
+            int escapedStringLength = escapedString.Length;
+            if (trim)
+            {
+                while (currentPosition < escapedString.Length && Char.IsWhiteSpace(escapedString[currentPosition]))
+                {
+                    currentPosition++;
+                }
+                if (currentPosition == escapedString.Length)
+                {
+                    return String.Empty;
+                }
+                while (Char.IsWhiteSpace(escapedString[escapedStringLength - 1]))
+                {
+                    escapedStringLength--;
+                }
+            }
 
             // Loop until there are no more percent signs in the input string.
             while (indexOfPercent != -1)
@@ -80,9 +98,9 @@ namespace Microsoft.Build.Shared
                 // There must be two hex characters following the percent sign
                 // for us to even consider doing anything with this.
                 if (
-                        (indexOfPercent <= (escapedString.Length - 3)) &&
-                        Uri.IsHexDigit(escapedString[indexOfPercent + 1]) &&
-                        Uri.IsHexDigit(escapedString[indexOfPercent + 2])
+                        (indexOfPercent <= (escapedStringLength - 3)) &&
+                        TryDecodeHexDigit(escapedString[indexOfPercent + 1], out int digit1) &&
+                        TryDecodeHexDigit(escapedString[indexOfPercent + 2], out int digit2)
                     )
                 {
                     // First copy all the characters up to the current percent sign into
@@ -90,9 +108,7 @@ namespace Microsoft.Build.Shared
                     unescapedString.Append(escapedString, currentPosition, indexOfPercent - currentPosition);
 
                     // Convert the %XX to an actual real character.
-                    string hexString = escapedString.Substring(indexOfPercent + 1, 2);
-                    char unescapedCharacter = (char)int.Parse(hexString, System.Globalization.NumberStyles.HexNumber,
-                        CultureInfo.InvariantCulture);
+                    char unescapedCharacter = (char)((digit1 << 4) + digit2);
 
                     // if the unescaped character is not on the exception list, append it
                     unescapedString.Append(unescapedCharacter);
@@ -100,8 +116,6 @@ namespace Microsoft.Build.Shared
                     // Advance the current pointer to reflect the fact that the destination string
                     // is up to date with everything up to and including this escape code we just found.
                     currentPosition = indexOfPercent + 3;
-
-                    escapingWasNecessary = true;
                 }
 
                 // Find the next percent sign.
@@ -110,19 +124,19 @@ namespace Microsoft.Build.Shared
 
             // Okay, there are no more percent signs in the input string, so just copy the remaining
             // characters into the destination.
-            unescapedString.Append(escapedString, currentPosition, escapedString.Length - currentPosition);
+            unescapedString.Append(escapedString, currentPosition, escapedStringLength - currentPosition);
 
             return StringBuilderCache.GetStringAndRelease(unescapedString);
         }
 
 
         /// <summary>
-        /// Adds instances of %XX in the input string where the char char to be escaped appears
-        /// XX is the hex value of the ASCII code for the char.  Interns and caches the result. 
+        /// Adds instances of %XX in the input string where the char to be escaped appears
+        /// XX is the hex value of the ASCII code for the char.  Interns and caches the result.
         /// </summary>
         /// <comment>
-        /// NOTE:  Only recommended for use in scenarios where there's expected to be significant 
-        /// repetition of the escaped string.  Cache currently grows unbounded.  
+        /// NOTE:  Only recommended for use in scenarios where there's expected to be significant
+        /// repetition of the escaped string.  Cache currently grows unbounded.
         /// </comment>
         internal static string EscapeWithCaching(string unescapedString)
         {
@@ -130,7 +144,7 @@ namespace Microsoft.Build.Shared
         }
 
         /// <summary>
-        /// Adds instances of %XX in the input string where the char char to be escaped appears
+        /// Adds instances of %XX in the input string where the char to be escaped appears
         /// XX is the hex value of the ASCII code for the char.
         /// </summary>
         /// <param name="unescapedString">The string to escape.</param>
@@ -141,12 +155,12 @@ namespace Microsoft.Build.Shared
         }
 
         /// <summary>
-        /// Adds instances of %XX in the input string where the char char to be escaped appears
+        /// Adds instances of %XX in the input string where the char to be escaped appears
         /// XX is the hex value of the ASCII code for the char.  Caches if requested.
         /// </summary>
         /// <param name="unescapedString">The string to escape.</param>
         /// <param name="cache">
-        /// True if the cache should be checked, and if the resultant string 
+        /// True if the cache should be checked, and if the resultant string
         /// should be cached.
         /// </param>
         private static string EscapeWithOptionalCaching(string unescapedString, bool cache)
@@ -158,12 +172,12 @@ namespace Microsoft.Build.Shared
                 return unescapedString;
             }
 
-            // next, if we're caching, check to see if it's already there. 
+            // next, if we're caching, check to see if it's already there.
             if (cache)
             {
-                string cachedEscapedString = null;
                 lock (s_unescapedToEscapedStrings)
                 {
+                    string cachedEscapedString;
                     if (s_unescapedToEscapedStrings.TryGetValue(unescapedString, out cachedEscapedString))
                     {
                         return cachedEscapedString;
@@ -181,7 +195,7 @@ namespace Microsoft.Build.Shared
                 return StringBuilderCache.GetStringAndRelease(escapedStringBuilder);
             }
 
-            string escapedString = OpportunisticIntern.StringBuilderToString(escapedStringBuilder);
+            string escapedString = Strings.WeakIntern(escapedStringBuilder.ToString());
             StringBuilderCache.Release(escapedStringBuilder);
 
             lock (s_unescapedToEscapedStrings)
@@ -204,7 +218,7 @@ namespace Microsoft.Build.Shared
             string unescapedString
             )
         {
-            return (-1 != unescapedString.IndexOfAny(s_charsToEscape));
+            return -1 != unescapedString.IndexOfAny(s_charsToEscape);
         }
 
         /// <summary>
@@ -212,28 +226,30 @@ namespace Microsoft.Build.Shared
         /// </summary>
         /// <param name="escapedString"></param>
         /// <returns></returns>
-        internal static bool ContainsEscapedWildcards
-            (
-            string escapedString
-            )
+        internal static bool ContainsEscapedWildcards(string escapedString)
         {
-            if (-1 != escapedString.IndexOf('%'))
+            if (escapedString.Length < 3)
             {
-                // It has a '%' sign.  We have promise.
-                if (
-                        (-1 != escapedString.IndexOf("%2", StringComparison.Ordinal)) ||
-                        (-1 != escapedString.IndexOf("%3", StringComparison.Ordinal))
-                    )
+                return false;
+            }
+            // Look for the first %. We know that it has to be followed by at least two more characters so we subtract 2
+            // from the length to search.
+            int index = escapedString.IndexOf('%', 0, escapedString.Length - 2);
+            while (index != -1)
+            {
+                if (escapedString[index + 1] == '2' && (escapedString[index + 2] == 'a' || escapedString[index + 2] == 'A'))
                 {
-                    // It has either a '%2' or a '%3'.  This is looking very promising.
-                    return
-                        (
-                            (-1 != escapedString.IndexOf("%2a", StringComparison.Ordinal)) ||
-                            (-1 != escapedString.IndexOf("%2A", StringComparison.Ordinal)) ||
-                            (-1 != escapedString.IndexOf("%3f", StringComparison.Ordinal)) ||
-                            (-1 != escapedString.IndexOf("%3F", StringComparison.Ordinal))
-                        );
+                    // %2a or %2A
+                    return true;
                 }
+                if (escapedString[index + 1] == '3' && (escapedString[index + 2] == 'f' || escapedString[index + 2] == 'F'))
+                {
+                    // %3f or %3F
+                    return true;
+                }
+                // Continue searching for % starting at (index + 1). We know that it has to be followed by at least two
+                // more characters so we subtract 2 from the length of the substring to search.
+                index = escapedString.IndexOf('%', index + 1, escapedString.Length - (index + 1) - 2);
             }
             return false;
         }
@@ -286,9 +302,9 @@ namespace Microsoft.Build.Shared
 
         /// <summary>
         /// Special characters that need escaping.
-        /// It's VERY important that the percent character is the FIRST on the list - since it's both a character 
-        /// we escape and use in escape sequences, we can unintentionally escape other escape sequences if we 
-        /// don't process it first. Of course we'll have a similar problem if we ever decide to escape hex digits 
+        /// It's VERY important that the percent character is the FIRST on the list - since it's both a character
+        /// we escape and use in escape sequences, we can unintentionally escape other escape sequences if we
+        /// don't process it first. Of course we'll have a similar problem if we ever decide to escape hex digits
         /// (that would require rewriting the algorithm) but since it seems unlikely that we ever do, this should
         /// be good enough to avoid complicating the algorithm at this point.
         /// </summary>

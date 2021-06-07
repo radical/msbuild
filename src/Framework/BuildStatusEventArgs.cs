@@ -1,7 +1,6 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Runtime.InteropServices;
 using System;
 
 namespace Microsoft.Build.Framework
@@ -62,7 +61,7 @@ namespace Microsoft.Build.Framework
             string senderName,
             DateTime eventTimestamp
         )
-            : this(message, helpKeyword, senderName, eventTimestamp, null)
+            : this(message, helpKeyword, senderName, eventTimestamp, messageArgs: null)
         {
             // do nothing
         }
@@ -74,6 +73,7 @@ namespace Microsoft.Build.Framework
         /// <param name="helpKeyword">help keyword </param> 
         /// <param name="senderName">name of event sender</param> 
         /// <param name="eventTimestamp">Timestamp when event was created</param>
+        /// <param name="messageArgs">Optional arguments for formatting the message string.</param>
         protected BuildStatusEventArgs
         (
             string message,

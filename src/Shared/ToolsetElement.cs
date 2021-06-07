@@ -5,9 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Configuration;
 using System.IO;
-using System.Text;
-using System.Globalization;
-using System.Reflection;
 using Microsoft.Build.Collections;
 using Microsoft.Build.Shared;
 
@@ -32,7 +29,7 @@ namespace Microsoft.Build.Evaluation
             // If section definition is present and section is not present, this value is not null
             // If section definition is not present and section is also not present, this value is null
             // If the section definition is not present and section is present, then this value is null
-            if (null != configuration)
+            if (configuration != null)
             {
                 ConfigurationSection msbuildSection = configuration.GetSection("msbuildToolsets");
                 configurationSection = msbuildSection as ToolsetConfigurationSection;
@@ -64,51 +61,14 @@ namespace Microsoft.Build.Evaluation
                             File.Delete(tempFileName + ".config");
                             File.Delete(tempFileName);
                         }
-                        catch (Exception ex)
+                        catch (Exception ex) when (ExceptionHandling.IsIoRelatedException(ex))
                         {
-                            if (ExceptionHandling.NotExpectedException(ex))
-                            {
-                                throw;
-                            }
                         }
                     }
                 }
             }
 
             return configurationSection;
-        }
-
-        /// <summary>
-        /// Creating a ToolsetConfigurationReader, and also reading toolsets from the 
-        /// configuration file, are a little expensive. To try to avoid this cost if it's 
-        /// not necessary, we'll check if the file exists first. If it exists, we'll scan for 
-        /// the string "toolsVersion" to see if it might actually have any tools versions
-        /// defined in it.
-        /// </summary>
-        /// <returns>True if there may be toolset definitions, otherwise false</returns>
-        internal static bool ConfigurationFileMayHaveToolsets()
-        {
-            bool result;
-
-            try
-            {
-                var configFile = FileUtilities.CurrentExecutableConfigurationFilePath;
-                result = File.Exists(configFile) && File.ReadAllText(configFile).Contains("toolsVersion");
-            }
-            catch (Exception e)
-            {
-                if (ExceptionHandling.NotExpectedException(e))
-                {
-                    // Catching Exception, but rethrowing unless it's an IO related exception.
-                    throw;
-                }
-
-                // There was some problem reading the config file: let the configuration reader
-                // encounter it
-                result = true;
-            }
-
-            return result;
         }
     }
 
@@ -133,12 +93,12 @@ namespace Microsoft.Build.Evaluation
 
             set
             {
-                base["toolsVersion"] = value;
+                base[nameof(toolsVersion)] = value;
             }
         }
 
         /// <summary>
-        /// Property element collection 
+        /// Property element collection
         /// </summary>
         [ConfigurationProperty("", IsDefaultCollection = true)]
         public PropertyElementCollection PropertyElements
@@ -146,6 +106,191 @@ namespace Microsoft.Build.Evaluation
             get
             {
                 return (PropertyElementCollection)base[""];
+            }
+        }
+
+        /// <summary>
+        /// Collection of all the search paths for project imports, per OS
+        /// </summary>
+        [ConfigurationProperty("projectImportSearchPaths")]
+        public ExtensionsPathsElementCollection AllProjectImportSearchPaths
+        {
+            get
+            {
+                return (ExtensionsPathsElementCollection)base["projectImportSearchPaths"];
+            }
+        }
+
+        /// <summary>
+        /// Class representing all the per-OS search paths for MSBuildExtensionsPath*
+        /// </summary>
+        internal sealed class ExtensionsPathsElementCollection : ConfigurationElementCollection
+        {
+            /// <summary>
+            /// We use this dictionary to track whether or not we've seen a given
+            /// searchPaths definition before, since the .NET configuration classes
+            /// won't perform this check without respect for case.
+            /// </summary>
+            private Dictionary<string, string> _previouslySeenOS = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            /// <summary>
+            /// Type of the collection
+            /// This has to be public as cannot change access modifier when overriding
+            /// </summary>
+            public override ConfigurationElementCollectionType CollectionType
+            {
+                get
+                {
+                    return ConfigurationElementCollectionType.BasicMap;
+                }
+            }
+
+            /// <summary>
+            /// Throw exception if an element with a duplicate key is added to the collection
+            /// </summary>
+            protected override bool ThrowOnDuplicate
+            {
+                get
+                {
+                    return false;
+                }
+            }
+
+            /// <summary>
+            /// Name of the element
+            /// </summary>
+            protected override string ElementName
+            {
+                get
+                {
+                    return "searchPaths";
+                }
+            }
+
+            /// <summary>
+            /// Gets an element with the specified name
+            /// </summary>
+            /// <param name="os">OS of the element</param>
+            /// <returns>element</returns>
+            public ExtensionsPathElement GetElement(string os)
+            {
+                return (ExtensionsPathElement)this.BaseGet(os);
+            }
+
+            /// <summary>
+            /// Gets an element based at the specified position
+            /// </summary>
+            /// <param name="index">position</param>
+            /// <returns>element</returns>
+            public ExtensionsPathElement GetElement(int index)
+            {
+                return (ExtensionsPathElement)this.BaseGet(index);
+            }
+
+            /// <summary>
+            /// Returns the key value for the given element
+            /// </summary>
+            /// <param name="element">element whose key is returned</param>
+            /// <returns>key</returns>
+            protected override object GetElementKey(ConfigurationElement element)
+            {
+                return ((ExtensionsPathElement)element).OS;
+            }
+
+            /// <summary>
+            /// Creates a new element of the collection
+            /// </summary>
+            /// <returns>Created element</returns>
+            protected override ConfigurationElement CreateNewElement()
+            {
+                return new ExtensionsPathElement();
+            }
+
+            /// <summary>
+            /// overridden so we can track previously seen elements
+            /// </summary>
+            protected override void BaseAdd(int index, ConfigurationElement element)
+            {
+                UpdateOSMap(element);
+
+                base.BaseAdd(index, element);
+            }
+
+            /// <summary>
+            /// overridden so we can track previously seen elements
+            /// </summary>
+            protected override void BaseAdd(ConfigurationElement element)
+            {
+                UpdateOSMap(element);
+
+                base.BaseAdd(element);
+            }
+
+            /// <summary>
+            /// Stores the name of the OS in a case-insensitive map
+            /// so we can detect if it is specified more than once but with
+            /// different case
+            /// </summary>
+            private void UpdateOSMap(ConfigurationElement element)
+            {
+                string os = GetElementKey(element).ToString();
+
+                if (_previouslySeenOS.ContainsKey(os))
+                {
+                    string locationString = String.Empty;
+                    if (!String.IsNullOrEmpty(element.ElementInformation.Source))
+                    {
+                        if (element.ElementInformation.LineNumber != 0)
+                        {
+                            locationString = String.Format("{0} ({1})", element.ElementInformation.Source, element.ElementInformation.LineNumber);
+                        }
+                        else
+                        {
+                            locationString = element.ElementInformation.Source;
+                        }
+                    }
+
+                    string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("MultipleDefinitionsForSameExtensionsPathOS", os, locationString);
+
+                    throw new ConfigurationErrorsException(message, element.ElementInformation.Source, element.ElementInformation.LineNumber);
+                }
+
+                _previouslySeenOS.Add(os, string.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Class representing searchPaths element for a single OS
+        /// </summary>
+        internal sealed class ExtensionsPathElement : ConfigurationElement
+        {
+            /// <summary>
+            /// OS attribute of the element
+            /// </summary>
+            [ConfigurationProperty("os", IsKey = true, IsRequired = true)]
+            public string OS
+            {
+                get
+                {
+                    return (string)base["os"];
+                }
+
+                set
+                {
+                    base["os"] = value;
+                }
+            }
+
+            /// <summary>
+            /// Property element collection
+            /// </summary>
+            [ConfigurationProperty("", IsDefaultCollection = true)]
+            public PropertyElementCollection PropertyElements
+            {
+                get
+                {
+                    return (PropertyElementCollection)base[""];
+                }
             }
         }
 
@@ -169,7 +314,7 @@ namespace Microsoft.Build.Evaluation
 
             /// <summary>
             /// Collection type
-            /// This has to be public as cannot change access modifier when overriding  
+            /// This has to be public as cannot change access modifier when overriding
             /// </summary>
             public override ConfigurationElementCollectionType CollectionType
             {
@@ -275,7 +420,7 @@ namespace Microsoft.Build.Evaluation
 
                 if (_previouslySeenPropertyNames.ContainsKey(propertyName))
                 {
-                    string message = ResourceUtilities.FormatResourceString("MultipleDefinitionsForSameProperty", propertyName);
+                    string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("MultipleDefinitionsForSameProperty", propertyName);
 
                     throw new ConfigurationErrorsException(message, element.ElementInformation.Source, element.ElementInformation.LineNumber);
                 }
@@ -446,7 +591,7 @@ namespace Microsoft.Build.Evaluation
 
             if (_previouslySeenToolsVersions.ContainsKey(toolsVersion))
             {
-                string message = ResourceUtilities.FormatResourceString("MultipleDefinitionsForSameToolset", toolsVersion);
+                string message = ResourceUtilities.FormatResourceStringStripCodeAndKeyword("MultipleDefinitionsForSameToolset", toolsVersion);
 
                 throw new ConfigurationErrorsException(message, element.ElementInformation.Source, element.ElementInformation.LineNumber);
             }
@@ -458,7 +603,7 @@ namespace Microsoft.Build.Evaluation
     /// <summary>
     /// This class is used to programmatically read msbuildToolsets section
     /// in from the configuration file.  An example of application config file:
-    /// 
+    ///
     /// &lt;configuration&gt;
     ///     &lt;msbuildToolsets default="2.0"&gt;
     ///         &lt;toolset toolsVersion="2.0"&gt;
@@ -470,7 +615,7 @@ namespace Microsoft.Build.Evaluation
     ///         &lt;/toolset&gt;
     ///     &lt;/msbuildToolsets&gt;
     /// &lt;/configuration&gt;
-    /// 
+    ///
     /// </summary>
     /// <remarks>
     /// Internal for unit testing only
@@ -478,7 +623,7 @@ namespace Microsoft.Build.Evaluation
     internal sealed class ToolsetConfigurationSection : ConfigurationSection
     {
         /// <summary>
-        /// toolsVersion element collection 
+        /// toolsVersion element collection
         /// </summary>
         [ConfigurationProperty("", IsDefaultCollection = true)]
         public ToolsetElementCollection Toolsets
@@ -503,7 +648,7 @@ namespace Microsoft.Build.Evaluation
                 // Note this means we can't distinguish between the attribute being present but containing
                 // an empty string for its value and the attribute not being present at all.
                 string defaultValue = (string)base["default"];
-                return (String.IsNullOrEmpty(defaultValue) ? null : defaultValue);
+                return String.IsNullOrEmpty(defaultValue) ? null : defaultValue;
             }
 
             set
@@ -526,7 +671,7 @@ namespace Microsoft.Build.Evaluation
                 // Note this means we can't distinguish between the attribute being present but containing
                 // an empty string for its value and the attribute not being present at all.
                 string defaultValue = (string)base["msbuildOverrideTasksPath"];
-                return (String.IsNullOrEmpty(defaultValue) ? null : defaultValue);
+                return String.IsNullOrEmpty(defaultValue) ? null : defaultValue;
             }
 
             set
@@ -536,7 +681,7 @@ namespace Microsoft.Build.Evaluation
         }
 
         /// <summary>
-        /// DefaultOverrideToolsVersion attribute on msbuildToolsets element, specifying the toolsversion that should be used by 
+        /// DefaultOverrideToolsVersion attribute on msbuildToolsets element, specifying the toolsversion that should be used by
         /// default to build projects with this version of MSBuild.
         /// </summary>
         [ConfigurationProperty("DefaultOverrideToolsVersion")]
@@ -550,12 +695,12 @@ namespace Microsoft.Build.Evaluation
                 // Note this means we can't distinguish between the attribute being present but containing
                 // an empty string for its value and the attribute not being present at all.
                 string defaultValue = (string)base["DefaultOverrideToolsVersion"];
-                return (String.IsNullOrEmpty(defaultValue) ? null : defaultValue);
+                return String.IsNullOrEmpty(defaultValue) ? null : defaultValue;
             }
 
             set
             {
-                base["DefaultOverrideToolsVersion"] = value;
+                base[nameof(DefaultOverrideToolsVersion)] = value;
             }
         }
     }

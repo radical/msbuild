@@ -1,26 +1,19 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System;
 using System.Collections.Generic;
-using System.Collections;
-using System.Text;
 using System.IO;
 
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
+using Microsoft.Build.Shared.FileSystem;
 
 namespace Microsoft.Build.Utilities
 {
     /// <summary>
     /// This class contains utility functions to assist with tracking dependencies
     /// </summary>
-#if WHIDBEY_VISIBILITY
-    internal
-#else
-    public
-#endif
-    static class TrackedDependencies
+    public static class TrackedDependencies
     {
         #region Methods
         /// <summary>
@@ -34,43 +27,39 @@ namespace Microsoft.Build.Utilities
             {
                 return null;
             }
-            else
+
+            var expanded = new List<ITaskItem>(expand.Length);
+            foreach (ITaskItem item in expand)
             {
-                List<ITaskItem> expanded = new List<ITaskItem>(expand.Length);
-                foreach (ITaskItem i in expand)
+                if (FileMatcher.HasWildcards(item.ItemSpec))
                 {
-                    if (FileMatcher.HasWildcards(i.ItemSpec))
+                    string[] files;
+                    string directoryName = Path.GetDirectoryName(item.ItemSpec);
+                    string searchPattern = Path.GetFileName(item.ItemSpec);
+
+                    // Very often with TLog files we're talking about
+                    // a directory and a simply wildcarded filename
+                    // Optimize for that case here.
+                    if (!FileMatcher.HasWildcards(directoryName) && FileSystems.Default.DirectoryExists(directoryName))
                     {
-                        string[] files;
-                        string directoryName = Path.GetDirectoryName(i.ItemSpec);
-                        string searchPattern = Path.GetFileName(i.ItemSpec);
-
-                        // Very often with TLog files we're talking about
-                        // a directory and a simply wildcarded filename
-                        // Optimize for that case here.
-                        if (!FileMatcher.HasWildcards(directoryName) && Directory.Exists(directoryName))
-                        {
-                            files = Directory.GetFiles(directoryName, searchPattern);
-                        }
-                        else
-                        {
-                            files = FileMatcher.GetFiles(null, i.ItemSpec);
-                        }
-
-                        foreach (string file in files)
-                        {
-                            TaskItem newItem = new TaskItem((ITaskItem)i);
-                            newItem.ItemSpec = file;
-                            expanded.Add(newItem);
-                        }
+                        files = Directory.GetFiles(directoryName, searchPattern);
                     }
                     else
                     {
-                        expanded.Add(i);
+                        files = FileMatcher.Default.GetFiles(null, item.ItemSpec);
+                    }
+
+                    foreach (string file in files)
+                    {
+                        expanded.Add(new TaskItem(item) { ItemSpec = file });
                     }
                 }
-                return expanded.ToArray();
+                else
+                {
+                    expanded.Add(item);
+                }
             }
+            return expanded.ToArray();
         }
 
         /// <summary>
@@ -82,7 +71,7 @@ namespace Microsoft.Build.Utilities
         {
             bool allExist = true;
 
-            if (files != null && files.Length > 0)
+            if (files?.Length > 0)
             {
                 foreach (ITaskItem item in files)
                 {

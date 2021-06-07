@@ -1,30 +1,32 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
-using System.Runtime.InteropServices;
 using System;
 using System.Collections;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.Framework
 {
     /// <summary>
     /// Arguments for project started events
     /// </summary>
-    /// <remarks>
-    /// WARNING: marking a type [Serializable] without implementing
-    /// ISerializable imposes a serialization contract -- it is a
-    /// promise to never change the type's fields i.e. the type is
-    /// immutable; adding new fields in the next version of the type
-    /// without following certain special FX guidelines, can break both
-    /// forward and backward compatibility
-    /// </remarks>
+    // WARNING: marking a type [Serializable] without implementing
+    // ISerializable imposes a serialization contract -- it is a
+    // promise to never change the type's fields i.e. the type is
+    // immutable; adding new fields in the next version of the type
+    // without following certain special FX guidelines, can break both
+    // forward and backward compatibility
     [Serializable]
     public class ProjectStartedEventArgs : BuildStatusEventArgs
     {
         #region Constants
+        /// <summary>
+        /// Indicates an invalid project identifier.
+        /// </summary>
         public const int InvalidProjectId = -1;
         #endregion
 
@@ -99,6 +101,8 @@ namespace Microsoft.Build.Framework
         /// <param name="properties">list of properties</param>
         /// <param name="items">list of items</param>
         /// <param name="parentBuildEventContext">event context info for the parent project</param>
+        /// <param name="globalProperties">An <see cref="IDictionary{String, String}"/> containing global properties.</param>
+        /// <param name="toolsVersion">The tools version.</param>
         public ProjectStartedEventArgs
         (
             int projectId,
@@ -128,6 +132,7 @@ namespace Microsoft.Build.Framework
         /// <param name="targetNames">targets we are going to build (empty indicates default targets)</param>
         /// <param name="properties">list of properties</param>
         /// <param name="items">list of items</param>
+        /// <param name="eventTimestamp">The <see cref="DateTime"/> of the event.</param>
         public ProjectStartedEventArgs
         (
             string message,
@@ -140,19 +145,10 @@ namespace Microsoft.Build.Framework
         )
             : base(message, helpKeyword, "MSBuild", eventTimestamp)
         {
-            _projectFile = projectFile;
-
-            if (targetNames == null)
-            {
-                _targetNames = String.Empty;
-            }
-            else
-            {
-                _targetNames = targetNames;
-            }
-
-            _properties = properties;
-            _items = items;
+            this.projectFile = projectFile;
+            this.targetNames = targetNames ?? String.Empty;
+            this.properties = properties;
+            this.items = items;
         }
 
         /// <summary>
@@ -167,6 +163,7 @@ namespace Microsoft.Build.Framework
         /// <param name="properties">list of properties</param>
         /// <param name="items">list of items</param>
         /// <param name="parentBuildEventContext">event context info for the parent project</param>
+        /// <param name="eventTimestamp">The <see cref="DateTime"/> of the event.</param>
         public ProjectStartedEventArgs
         (
             int projectId,
@@ -181,8 +178,8 @@ namespace Microsoft.Build.Framework
         )
             : this(message, helpKeyword, projectFile, targetNames, properties, items, eventTimestamp)
         {
-            _parentProjectBuildEventContext = parentBuildEventContext;
-            _projectId = projectId;
+            parentProjectBuildEventContext = parentBuildEventContext;
+            this.projectId = projectId;
         }
 
         // ProjectId is only contained in the project started event.
@@ -190,18 +187,21 @@ namespace Microsoft.Build.Framework
         // used when debugging to determine if two projects with the same name
         // are the same project instance or different instances
         [OptionalField(VersionAdded = 2)]
-        private int _projectId;
+        private int projectId;
 
+        /// <summary>
+        /// Gets the identifier of the project.
+        /// </summary>
         public int ProjectId
         {
             get
             {
-                return _projectId;
+                return projectId;
             }
         }
 
         [OptionalField(VersionAdded = 2)]
-        private BuildEventContext _parentProjectBuildEventContext;
+        private BuildEventContext parentProjectBuildEventContext;
 
         /// <summary>
         /// Event context information, where the event was fired from in terms of the build location
@@ -210,14 +210,14 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _parentProjectBuildEventContext;
+                return parentProjectBuildEventContext;
             }
         }
 
         /// <summary>
         /// The name of the project file
         /// </summary>
-        private string _projectFile;
+        private string projectFile;
 
         /// <summary>
         /// Project name
@@ -226,14 +226,14 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _projectFile;
+                return projectFile;
             }
         }
 
         /// <summary>
         /// Targets that we will build in the project
         /// </summary>
-        private string _targetNames;
+        private string targetNames;
 
         /// <summary>
         /// Targets that we will build in the project
@@ -242,7 +242,7 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _targetNames;
+                return targetNames;
             }
         }
 
@@ -250,7 +250,7 @@ namespace Microsoft.Build.Framework
         /// Gets the set of global properties used to evaluate this project.
         /// </summary>
         [OptionalField(VersionAdded = 2)]
-        private IDictionary<string, string> _globalProperties;
+        private IDictionary<string, string> globalProperties;
 
         /// <summary>
         /// Gets the set of global properties used to evaluate this project.
@@ -259,17 +259,17 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _globalProperties;
+                return globalProperties;
             }
 
             internal set
             {
-                _globalProperties = value;
+                globalProperties = value;
             }
         }
 
         [OptionalField(VersionAdded = 2)]
-        private string _toolsVersion;
+        private string toolsVersion;
 
         /// <summary>
         /// Gets the tools version used to evaluate this project.
@@ -278,12 +278,12 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _toolsVersion;
+                return toolsVersion;
             }
 
             internal set
             {
-                _toolsVersion = value;
+                toolsVersion = value;
             }
         }
 
@@ -291,7 +291,7 @@ namespace Microsoft.Build.Framework
         // (a) this event will not be thrown by tasks, so it should not generally cross AppDomain boundaries
         // (b) this event still makes sense when this field is "null"
         [NonSerialized]
-        private IEnumerable _properties;
+        private IEnumerable properties;
 
         /// <summary>
         /// List of properties in this project. This is a live, read-only list.
@@ -308,7 +308,7 @@ namespace Microsoft.Build.Framework
                 // up the live list of properties from the loaded project, which is stored in the configuration as well.
                 // By doing this, we no longer need to transmit properties using this message because they've already
                 // been transmitted as part of the BuildRequestConfiguration.
-                return _properties;
+                return properties;
             }
         }
 
@@ -316,7 +316,7 @@ namespace Microsoft.Build.Framework
         // (a) this event will not be thrown by tasks, so it should not generally cross AppDomain boundaries
         // (b) this event still makes sense when this field is "null"
         [NonSerialized]
-        private IEnumerable _items;
+        private IEnumerable items;
 
         /// <summary>
         /// List of items in this project. This is a live, read-only list.
@@ -332,7 +332,7 @@ namespace Microsoft.Build.Framework
                 // case, this access is to the live list.  For the central logger in the multi-proc case, the main node 
                 // has likely not loaded this project, and therefore the live items would not be available to them, which is 
                 // the same as the current functionality.
-                return _items;
+                return items;
             }
         }
 
@@ -345,99 +345,53 @@ namespace Microsoft.Build.Framework
         internal override void WriteToStream(BinaryWriter writer)
         {
             base.WriteToStream(writer);
-            writer.Write((Int32)_projectId);
-            #region ParentProjectBuildEventContext
-            if (_parentProjectBuildEventContext == null)
+            writer.Write((Int32)projectId);
+
+            if (parentProjectBuildEventContext == null)
             {
                 writer.Write((byte)0);
             }
             else
             {
                 writer.Write((byte)1);
-                writer.Write((Int32)_parentProjectBuildEventContext.NodeId);
-                writer.Write((Int32)_parentProjectBuildEventContext.ProjectContextId);
-                writer.Write((Int32)_parentProjectBuildEventContext.TargetId);
-                writer.Write((Int32)_parentProjectBuildEventContext.TaskId);
-                writer.Write((Int32)_parentProjectBuildEventContext.SubmissionId);
-                writer.Write((Int32)_parentProjectBuildEventContext.ProjectInstanceId);
+                writer.Write((Int32)parentProjectBuildEventContext.NodeId);
+                writer.Write((Int32)parentProjectBuildEventContext.ProjectContextId);
+                writer.Write((Int32)parentProjectBuildEventContext.TargetId);
+                writer.Write((Int32)parentProjectBuildEventContext.TaskId);
+                writer.Write((Int32)parentProjectBuildEventContext.SubmissionId);
+                writer.Write((Int32)parentProjectBuildEventContext.ProjectInstanceId);
             }
-            #endregion
-            #region ProjectFile
-            if (_projectFile == null)
-            {
-                writer.Write((byte)0);
-            }
-            else
-            {
-                writer.Write((byte)1);
-                writer.Write(_projectFile);
-            }
-            #endregion
 
-            #region TargetNames
-            // TargetNames cannot be null as per line 61 in the constructor
-            writer.Write(_targetNames);
-            #endregion
+            writer.WriteOptionalString(projectFile);
 
-            #region Properties
-
-            Dictionary<string, string> propertyList = GeneratePropertyList();
+            // TargetNames cannot be null as per the constructor
+            writer.Write(targetNames);
 
             // If no properties were added to the property list 
             // then we have nothing to create when it is deserialized
             // This can happen if properties is null or if none of the 
             // five properties were found in the property object.
-            if ((propertyList == null || propertyList.Count == 0))
+            if (properties == null)
             {
                 writer.Write((byte)0);
             }
             else
             {
-                writer.Write((byte)1);
+                var validProperties = properties.Cast<DictionaryEntry>().Where(entry => entry.Key != null && entry.Value != null);
+                // ReSharper disable once PossibleMultipleEnumeration - We need to get the count of non-null first
+                var propertyCount = validProperties.Count();
 
-                // Write how many properties we are going to write into the stream
-                writer.Write((Int32)propertyList.Count);
+                writer.Write((byte)1);
+                writer.Write(propertyCount);
 
                 // Write the actual property name value pairs into the stream
-                foreach (KeyValuePair<string, string> propertyPair in propertyList)
+                // ReSharper disable once PossibleMultipleEnumeration
+                foreach (var propertyPair in validProperties)
                 {
-                    writer.Write(propertyPair.Key);
-                    writer.Write(propertyPair.Value);
+                    writer.Write((string)propertyPair.Key);
+                    writer.Write((string)propertyPair.Value);
                 }
             }
-
-            #endregion
-        }
-
-        /// <summary>
-        /// Generates a list of KeyValuePairs from the properties enumerator.
-        /// For each of these properties add them to a list to return to the caller.
-        /// </summary>
-        /// <returns>Null if properties is null, or a list containing one or more of the  properties in the properties enumerator</returns>
-        private Dictionary<string, string> GeneratePropertyList()
-        {
-            if (_properties == null)
-            {
-                return null;
-            }
-
-            Dictionary<string, string> propertyList = new Dictionary<string, string>();
-
-            // Loop through the properties and add them to the keyvalue pair list
-            foreach (DictionaryEntry property in _properties)
-            {
-                object propertyKey = property.Key;
-                object propertyValue = property.Value;
-
-                // Make sure property keys and values are not null before casting.
-                // property key and value will always be a string, if this is not the case
-                // the a cast exception is the correct course of action. 
-                if (property.Key != null && property.Value != null)
-                {
-                    propertyList.Add((string)property.Key, (string)property.Value);
-                }
-            }
-            return propertyList;
         }
 
         /// <summary>
@@ -448,11 +402,11 @@ namespace Microsoft.Build.Framework
         internal override void CreateFromStream(BinaryReader reader, int version)
         {
             base.CreateFromStream(reader, version);
-            _projectId = reader.ReadInt32();
-            #region ParentProjectBuildEventContext
+            projectId = reader.ReadInt32();
+
             if (reader.ReadByte() == 0)
             {
-                _parentProjectBuildEventContext = null;
+                parentProjectBuildEventContext = null;
             }
             else
             {
@@ -465,34 +419,23 @@ namespace Microsoft.Build.Framework
                 {
                     int submissionId = reader.ReadInt32();
                     int projectInstanceId = reader.ReadInt32();
-                    _parentProjectBuildEventContext = new BuildEventContext(submissionId, nodeId, projectInstanceId, projectContextId, targetId, taskId);
+                    parentProjectBuildEventContext = new BuildEventContext(submissionId, nodeId, projectInstanceId, projectContextId, targetId, taskId);
                 }
                 else
                 {
-                    _parentProjectBuildEventContext = new BuildEventContext(nodeId, targetId, projectContextId, taskId);
+                    parentProjectBuildEventContext = new BuildEventContext(nodeId, targetId, projectContextId, taskId);
                 }
             }
-            #endregion
-            #region ProjectFile
-            if (reader.ReadByte() == 0)
-            {
-                _projectFile = null;
-            }
-            else
-            {
-                _projectFile = reader.ReadString();
-            }
-            #endregion
-            #region TargetNames
-            // TargetNames cannot be null as per line 61 in the constructor
-            _targetNames = reader.ReadString();
-            #endregion
-            #region Properties
+
+            projectFile = reader.ReadByte() == 0 ? null : reader.ReadString();
+
+            // TargetNames cannot be null as per the constructor
+            targetNames = reader.ReadString();
 
             // Check to see if properties was null
             if (reader.ReadByte() == 0)
             {
-                _properties = null;
+                properties = null;
             }
             else
             {
@@ -515,10 +458,8 @@ namespace Microsoft.Build.Framework
                     }
                 }
 
-                _properties = dictionaryList;
+                properties = dictionaryList;
             }
-
-            #endregion
         }
         #endregion
 
@@ -526,26 +467,51 @@ namespace Microsoft.Build.Framework
         [OnDeserializing] // Will happen before the object is deserialized
         private void SetDefaultsBeforeSerialization(StreamingContext sc)
         {
-            _projectId = InvalidProjectId;
+            projectId = InvalidProjectId;
             // Don't want to set the default before deserialization is completed to a new event context because
             // that would most likely be a lot of wasted allocations
-            _parentProjectBuildEventContext = null;
+            parentProjectBuildEventContext = null;
         }
 
         [OnDeserialized]
         private void SetDefaultsAfterSerialization(StreamingContext sc)
         {
-            if (_parentProjectBuildEventContext == null)
+            if (parentProjectBuildEventContext == null)
             {
-                _parentProjectBuildEventContext = new BuildEventContext
-                                                (
-                                                    BuildEventContext.InvalidNodeId,
-                                                    BuildEventContext.InvalidTargetId,
-                                                    BuildEventContext.InvalidProjectContextId,
-                                                    BuildEventContext.InvalidTaskId
-                                                 );
+                parentProjectBuildEventContext = BuildEventContext.Invalid;
             }
         }
         #endregion
+
+        public override string Message
+        {
+            get
+            {
+                if (RawMessage == null)
+                {
+                    lock (locker)
+                    {
+                        if (RawMessage == null)
+                        {
+                            string projectFilePath = Path.GetFileName(ProjectFile);
+
+                            // Check to see if the there are any specific target names to be built.
+                            // If targetNames is null or empty then we will be building with the 
+                            // default targets.
+                            if (!string.IsNullOrEmpty(TargetNames))
+                            {
+                                RawMessage = FormatResourceStringIgnoreCodeAndKeyword("ProjectStartedPrefixForTopLevelProjectWithTargetNames", projectFilePath, TargetNames);
+                            }
+                            else
+                            {
+                                RawMessage = FormatResourceStringIgnoreCodeAndKeyword("ProjectStartedPrefixForTopLevelProjectWithDefaultTargets", projectFilePath);
+                            }
+                        }
+                    }
+                }
+
+                return RawMessage;
+            }
+        }
     }
 }

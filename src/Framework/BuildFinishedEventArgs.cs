@@ -1,9 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Event args for any build event.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.IO;
@@ -13,21 +9,19 @@ namespace Microsoft.Build.Framework
     /// <summary>
     /// This class represents the event arguments for build finished events.
     /// </summary>
-    /// <remarks>
-    /// WARNING: marking a type [Serializable] without implementing
-    /// ISerializable imposes a serialization contract -- it is a
-    /// promise to never change the type's fields i.e. the type is
-    /// immutable; adding new fields in the next version of the type
-    /// without following certain special FX guidelines, can break both
-    /// forward and backward compatibility
-    /// </remarks>
+    // WARNING: marking a type [Serializable] without implementing
+    // ISerializable imposes a serialization contract -- it is a
+    // promise to never change the type's fields i.e. the type is
+    // immutable; adding new fields in the next version of the type
+    // without following certain special FX guidelines, can break both
+    // forward and backward compatibility
     [Serializable]
     public class BuildFinishedEventArgs : BuildStatusEventArgs
     {
         /// <summary>
         /// Whether the build succeeded
         /// </summary>
-        private bool _succeeded;
+        private bool succeeded;
 
         /// <summary>
         /// Default constructor
@@ -92,9 +86,8 @@ namespace Microsoft.Build.Framework
         )
             : base(message, helpKeyword, "MSBuild", eventTimestamp, messageArgs)
         {
-            _succeeded = succeeded;
+            this.succeeded = succeeded;
         }
-
 
 
         #region CustomSerializationToStream
@@ -105,7 +98,7 @@ namespace Microsoft.Build.Framework
         internal override void WriteToStream(BinaryWriter writer)
         {
             base.WriteToStream(writer);
-            writer.Write(_succeeded);
+            writer.Write(succeeded);
         }
 
         /// <summary>
@@ -116,9 +109,10 @@ namespace Microsoft.Build.Framework
         internal override void CreateFromStream(BinaryReader reader, int version)
         {
             base.CreateFromStream(reader, version);
-            _succeeded = reader.ReadBoolean();
+            succeeded = reader.ReadBoolean();
         }
         #endregion
+
         /// <summary>
         /// Succeeded is true if the build succeeded; false otherwise.
         /// </summary>
@@ -126,7 +120,7 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _succeeded;
+                return succeeded;
             }
         }
     }

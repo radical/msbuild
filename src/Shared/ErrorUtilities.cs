@@ -2,11 +2,10 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Diagnostics;
-using System.Configuration;
 using System.Globalization;
-using System.Runtime.CompilerServices;
 using System.Threading;
 
 #if BUILDINGAPPXTASKS
@@ -90,6 +89,19 @@ namespace Microsoft.Build.Shared
         /// Indicates the code path followed should not have been possible.
         /// This is only for situations that would mean that there is a bug in MSBuild itself.
         /// </summary>
+        internal static void VerifyThrowInternalErrorUnreachable(bool condition)
+        {
+            if (s_throwExceptions && !condition)
+            {
+                throw new InternalErrorException("Unreachable?");
+            }
+        }
+
+        /// <summary>
+        /// Throws InternalErrorException. 
+        /// Indicates the code path followed should not have been possible.
+        /// This is only for situations that would mean that there is a bug in MSBuild itself.
+        /// </summary>
         internal static void ThrowIfTypeDoesNotImplementToString(object param)
         {
 #if DEBUG
@@ -140,6 +152,16 @@ namespace Microsoft.Build.Shared
         /// <param name="parameterValue">The value of the argument.</param>
         /// <param name="parameterName">Parameter that should not be null or zero length</param>
         internal static void VerifyThrowInternalLength(string parameterValue, string parameterName)
+        {
+            VerifyThrowInternalNull(parameterValue, parameterName);
+
+            if (parameterValue.Length == 0)
+            {
+                ThrowInternalError("{0} unexpectedly empty", parameterName);
+            }
+        }
+
+        public static void VerifyThrowInternalLength<T>(T[] parameterValue, string parameterName)
         {
             VerifyThrowInternalNull(parameterValue, parameterName);
 
@@ -302,7 +324,7 @@ namespace Microsoft.Build.Shared
 #endif
             if (s_throwExceptions)
             {
-                throw new InvalidOperationException(ResourceUtilities.FormatResourceString(resourceName, args));
+                throw new InvalidOperationException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword(resourceName, args));
             }
         }
 
@@ -397,6 +419,34 @@ namespace Microsoft.Build.Shared
             }
         }
 
+        /// <summary>
+        /// Overload for four string format arguments.
+        /// </summary>
+        /// <param name="condition"></param>
+        /// <param name="resourceName"></param>
+        /// <param name="arg0"></param>
+        /// <param name="arg1"></param>
+        /// <param name="arg2"></param>
+        /// <param name="arg3"></param>
+        internal static void VerifyThrowInvalidOperation
+        (
+            bool condition,
+            string resourceName,
+            object arg0,
+            object arg1,
+            object arg2,
+            object arg3
+        )
+        {
+            // PERF NOTE: check the condition here instead of pushing it into
+            // the ThrowInvalidOperation() method, because that method always
+            // allocates memory for its variable array of arguments
+            if (!condition)
+            {
+                ThrowInvalidOperation(resourceName, arg0, arg1, arg2, arg3);
+            }
+        }
+
         #endregion
 
         #region VerifyThrowArgument
@@ -442,7 +492,7 @@ namespace Microsoft.Build.Shared
 #endif
             if (s_throwExceptions)
             {
-                throw new ArgumentException(ResourceUtilities.FormatResourceString(resourceName, args), innerException);
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword(resourceName, args), innerException);
             }
         }
 
@@ -691,7 +741,54 @@ namespace Microsoft.Build.Shared
 
             if (parameter.Length == 0 && s_throwExceptions)
             {
-                throw new ArgumentException(ResourceUtilities.FormatResourceString("Shared.ParameterCannotHaveZeroLength", parameterName));
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("Shared.ParameterCannotHaveZeroLength", parameterName));
+            }
+        }
+
+#if !CLR2COMPATIBILITY
+        /// <summary>
+        /// Throws an ArgumentNullException if the given collection is null
+        /// and ArgumentException if it has zero length.
+        /// </summary>
+        /// <param name="parameter"></param>
+        /// <param name="parameterName"></param>
+        internal static void VerifyThrowArgumentLength<T>(IReadOnlyCollection<T> parameter, string parameterName)
+        {
+            VerifyThrowArgumentNull(parameter, parameterName);
+
+            if (parameter.Count == 0 && s_throwExceptions)
+            {
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("Shared.ParameterCannotHaveZeroLength", parameterName));
+            }
+        }
+
+        /// <summary>
+        /// Throws an ArgumentException if the given collection is not null but of zero length.
+        /// </summary>
+        /// <param name="parameter"></param>
+        /// <param name="parameterName"></param>
+        internal static void VerifyThrowArgumentLengthIfNotNull<T>(IReadOnlyCollection<T> parameter, string parameterName)
+        {
+            if (parameter?.Count == 0 && s_throwExceptions)
+            {
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("Shared.ParameterCannotHaveZeroLength", parameterName));
+            }
+        }
+#endif
+        
+        /// <summary>
+        /// Throws an ArgumentNullException if the given string parameter is null
+        /// and ArgumentException if it has zero length.
+        /// </summary>
+        /// <param name="parameter"></param>
+        /// <param name="parameterName"></param>
+        internal static void VerifyThrowArgumentInvalidPath(string parameter, string parameterName)
+        {
+            VerifyThrowArgumentNull(parameter, parameterName);
+
+            if (FileUtilities.PathIsInvalid(parameter) && s_throwExceptions)
+            {
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("Shared.ParameterCannotHaveInvalidPathChars", parameterName, parameter));
             }
         }
 
@@ -701,9 +798,9 @@ namespace Microsoft.Build.Shared
         /// </summary>
         internal static void VerifyThrowArgumentLengthIfNotNull(string parameter, string parameterName)
         {
-            if (parameter != null && parameter.Length == 0 && s_throwExceptions)
+            if (parameter?.Length == 0 && s_throwExceptions)
             {
-                throw new ArgumentException(ResourceUtilities.FormatResourceString("Shared.ParameterCannotHaveZeroLength", parameterName));
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("Shared.ParameterCannotHaveZeroLength", parameterName));
             }
         }
 
@@ -729,7 +826,7 @@ namespace Microsoft.Build.Shared
                 // Most ArgumentNullException overloads append its own rather clunky multi-line message. 
                 // So use the one overload that doesn't.
                 throw new ArgumentNullException(
-                    ResourceUtilities.FormatResourceString(resourceName, parameterName),
+                    ResourceUtilities.FormatResourceStringStripCodeAndKeyword(resourceName, parameterName),
                     (Exception)null);
             }
         }
@@ -748,7 +845,21 @@ namespace Microsoft.Build.Shared
 
             if (parameter1.Length != parameter2.Length && s_throwExceptions)
             {
-                throw new ArgumentException(ResourceUtilities.FormatResourceString("Shared.ParametersMustHaveTheSameLength", parameter1Name, parameter2Name));
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("Shared.ParametersMustHaveTheSameLength", parameter1Name, parameter2Name));
+            }
+        }
+
+        #endregion
+
+        #region VerifyThrowObjectDisposed
+
+        internal static void VerifyThrowObjectDisposed(bool condition, string objectName)
+        {
+            {
+                if (s_throwExceptions && !condition)
+                {
+                    throw new ObjectDisposedException(objectName);
+                }
             }
         }
 

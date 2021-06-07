@@ -1,25 +1,26 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Base class for the implementation of a node endpoint for out-of-proc nodes.</summary>
-//-----------------------------------------------------------------------
 
 using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Text;
+#if CLR2COMPATIBILITY
+using Microsoft.Build.Shared.Concurrent;
+#else
+using System.Collections.Concurrent;
+#endif
 using System.IO;
 using System.IO.Pipes;
 using System.Threading;
-using System.Diagnostics;
-using Microsoft.Build.Framework;
 using Microsoft.Build.Internal;
 using Microsoft.Build.Shared;
-using System.Security;
+#if FEATURE_SECURITY_PERMISSIONS || FEATURE_PIPE_SECURITY
 using System.Security.AccessControl;
+#endif
+#if FEATURE_PIPE_SECURITY && FEATURE_NAMED_PIPE_SECURITY_CONSTRUCTOR
 using System.Security.Principal;
-using System.Security.Permissions;
+#endif
+#if !FEATURE_APM
+using System.Threading.Tasks;
+#endif
 
 namespace Microsoft.Build.BackEnd
 {
@@ -28,12 +29,14 @@ namespace Microsoft.Build.BackEnd
     /// </summary>
     internal abstract class NodeEndpointOutOfProcBase : INodeEndpoint
     {
-        #region Private Data
+#region Private Data
 
+#if NETCOREAPP2_1 || MONO
         /// <summary>
         /// The amount of time to wait for the client to connect to the host.
         /// </summary>
         private const int ClientConnectTimeout = 60000;
+#endif // NETCOREAPP2_1 || MONO
 
         /// <summary>
         /// The size of the buffers to use for named pipes
@@ -64,7 +67,7 @@ namespace Microsoft.Build.BackEnd
 
         /// <summary>
         /// Set when a packet is available in the packet queue
-        /// </summary>      
+        /// </summary>
         private AutoResetEvent _packetAvailable;
 
         /// <summary>
@@ -83,31 +86,41 @@ namespace Microsoft.Build.BackEnd
         private INodePacketFactory _packetFactory;
 
         /// <summary>
-        /// The asynchronous packet queue.  
+        /// The asynchronous packet queue.
         /// </summary>
         /// <remarks>
         /// Operations on this queue must be synchronized since it is accessible by multiple threads.
         /// Use a lock on the packetQueue itself.
         /// </remarks>
-        private Queue<INodePacket> _packetQueue;
+        private ConcurrentQueue<INodePacket> _packetQueue;
 
         /// <summary>
         /// Per-node shared read buffer.
         /// </summary>
         private SharedReadBuffer _sharedReadBuffer;
 
-        #endregion
+        /// <summary>
+        /// A way to cache a byte array when writing out packets
+        /// </summary>
+        private MemoryStream _packetStream;
 
-        #region INodeEndpoint Events
+        /// <summary>
+        /// A binary writer to help write into <see cref="_packetStream"/>
+        /// </summary>
+        private BinaryWriter _binaryWriter;
+
+#endregion
+
+#region INodeEndpoint Events
 
         /// <summary>
         /// Raised when the link status has changed.
         /// </summary>
         public event LinkStatusChangedDelegate OnLinkStatusChanged;
 
-        #endregion
+#endregion
 
-        #region INodeEndpoint Properties
+#region INodeEndpoint Properties
 
         /// <summary>
         /// Returns the link status of this node.
@@ -117,13 +130,13 @@ namespace Microsoft.Build.BackEnd
             get { return _status; }
         }
 
-        #endregion
+#endregion
 
-        #region Properties
+#region Properties
 
-        #endregion
+#endregion
 
-        #region INodeEndpoint Methods
+#region INodeEndpoint Methods
 
         /// <summary>
         /// Causes this endpoint to wait for the remote endpoint to connect
@@ -132,14 +145,14 @@ namespace Microsoft.Build.BackEnd
         public void Listen(INodePacketFactory factory)
         {
             ErrorUtilities.VerifyThrow(_status == LinkStatus.Inactive, "Link not inactive.  Status is {0}", _status);
-            ErrorUtilities.VerifyThrowArgumentNull(factory, "factory");
+            ErrorUtilities.VerifyThrowArgumentNull(factory, nameof(factory));
             _packetFactory = factory;
 
             InitializeAsyncPacketThread();
         }
 
         /// <summary>
-        /// Causes this node to connect to the matched endpoint.  
+        /// Causes this node to connect to the matched endpoint.
         /// </summary>
         /// <param name="factory">The factory used to create packets.</param>
         public void Connect(INodePacketFactory factory)
@@ -168,9 +181,9 @@ namespace Microsoft.Build.BackEnd
             }
         }
 
-        #endregion
+#endregion
 
-        #region Construction
+#region Construction
 
         /// <summary>
         /// Instantiates an endpoint to act as a client
@@ -178,7 +191,7 @@ namespace Microsoft.Build.BackEnd
         /// <param name="pipeName">The name of the pipe to which we should connect.</param>
         internal void InternalConstruct(string pipeName)
         {
-            ErrorUtilities.VerifyThrowArgumentLength(pipeName, "pipeName");
+            ErrorUtilities.VerifyThrowArgumentLength(pipeName, nameof(pipeName));
 
             _debugCommunications = (Environment.GetEnvironmentVariable("MSBUILDDEBUGCOMM") == "1");
 
@@ -186,43 +199,59 @@ namespace Microsoft.Build.BackEnd
             _asyncDataMonitor = new object();
             _sharedReadBuffer = InterningBinaryReader.CreateSharedBuffer();
 
-            SecurityIdentifier identifier = WindowsIdentity.GetCurrent().Owner;
-            PipeSecurity security = new PipeSecurity();
+            _packetStream = new MemoryStream();
+            _binaryWriter = new BinaryWriter(_packetStream);
 
-            // Restrict access to just this account.  We set the owner specifically here, and on the
-            // pipe client side they will check the owner against this one - they must have identical
-            // SIDs or the client will reject this server.  This is used to avoid attacks where a
-            // hacked server creates a less restricted pipe in an attempt to lure us into using it and 
-            // then sending build requests to the real pipe client (which is the MSBuild Build Manager.)
-            PipeAccessRule rule = new PipeAccessRule(identifier, PipeAccessRights.ReadWrite, AccessControlType.Allow);
-            security.AddAccessRule(rule);
-            security.SetOwner(identifier);
+#if FEATURE_PIPE_SECURITY && FEATURE_NAMED_PIPE_SECURITY_CONSTRUCTOR
+            if (!NativeMethodsShared.IsMono)
+            {
+                SecurityIdentifier identifier = WindowsIdentity.GetCurrent().Owner;
+                PipeSecurity security = new PipeSecurity();
 
-            _pipeServer = new NamedPipeServerStream
-                (
-                pipeName,
-                PipeDirection.InOut,
-                1, // Only allow one connection at a time.
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.WriteThrough,
-                PipeBufferSize, // Default input buffer
-                PipeBufferSize, // Default output buffer
-                security,
-                HandleInheritability.None
+                // Restrict access to just this account.  We set the owner specifically here, and on the
+                // pipe client side they will check the owner against this one - they must have identical
+                // SIDs or the client will reject this server.  This is used to avoid attacks where a
+                // hacked server creates a less restricted pipe in an attempt to lure us into using it and 
+                // then sending build requests to the real pipe client (which is the MSBuild Build Manager.)
+                PipeAccessRule rule = new PipeAccessRule(identifier, PipeAccessRights.ReadWrite, AccessControlType.Allow);
+                security.AddAccessRule(rule);
+                security.SetOwner(identifier);
+
+                _pipeServer = new NamedPipeServerStream
+                    (
+                    pipeName,
+                    PipeDirection.InOut,
+                    1, // Only allow one connection at a time.
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.WriteThrough,
+                    PipeBufferSize, // Default input buffer
+                    PipeBufferSize,  // Default output buffer
+                    security,
+                    HandleInheritability.None
                 );
+            }
+            else
+#endif
+            {
+                _pipeServer = new NamedPipeServerStream
+                    (
+                    pipeName,
+                    PipeDirection.InOut,
+                    1, // Only allow one connection at a time.
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.WriteThrough,
+                    PipeBufferSize, // Default input buffer
+                    PipeBufferSize  // Default output buffer
+                );
+             }
         }
 
-        #endregion
+#endregion
 
         /// <summary>
         /// Returns the host handshake for this node endpoint
         /// </summary>
-        protected abstract long GetHostHandshake();
-
-        /// <summary>
-        /// Returns the client handshake for this node endpoint
-        /// </summary>
-        protected abstract long GetClientHandshake();
+        protected abstract Handshake GetHandshake();
 
         /// <summary>
         /// Updates the current link status if it has changed and notifies any registered delegates.
@@ -242,14 +271,10 @@ namespace Microsoft.Build.BackEnd
         /// <param name="newStatus">The new status of the endpoint link.</param>
         private void RaiseLinkStatusChanged(LinkStatus newStatus)
         {
-            if (null != OnLinkStatusChanged)
-            {
-                LinkStatusChangedDelegate linkStatusDelegate = (LinkStatusChangedDelegate)OnLinkStatusChanged.Clone();
-                linkStatusDelegate(this, newStatus);
-            }
+            OnLinkStatusChanged?.Invoke(this, newStatus);
         }
 
-        #region Private Methods
+#region Private Methods
 
         /// <summary>
         /// This does the actual work of changing the status and shutting down any threads we may have for
@@ -260,13 +285,17 @@ namespace Microsoft.Build.BackEnd
             ErrorUtilities.VerifyThrow(_packetPump.ManagedThreadId != Thread.CurrentThread.ManagedThreadId, "Can't join on the same thread.");
             _terminatePacketPump.Set();
             _packetPump.Join();
+#if CLR2COMPATIBILITY
             _terminatePacketPump.Close();
-            _pipeServer.Close();
+#else
+            _terminatePacketPump.Dispose();
+#endif
+            _pipeServer.Dispose();
             _packetPump = null;
             ChangeLinkStatus(LinkStatus.Inactive);
         }
 
-        #region Asynchronous Mode Methods
+#region Asynchronous Mode Methods
 
         /// <summary>
         /// Adds a packet to the packet queue when asynchronous mode is enabled.
@@ -274,15 +303,11 @@ namespace Microsoft.Build.BackEnd
         /// <param name="packet">The packet to be transmitted.</param>
         private void EnqueuePacket(INodePacket packet)
         {
-            ErrorUtilities.VerifyThrowArgumentNull(packet, "packet");
-            ErrorUtilities.VerifyThrow(null != _packetQueue, "packetQueue is null");
-            ErrorUtilities.VerifyThrow(null != _packetAvailable, "packetAvailable is null");
-
-            lock (_packetQueue)
-            {
-                _packetQueue.Enqueue(packet);
-                _packetAvailable.Set();
-            }
+            ErrorUtilities.VerifyThrowArgumentNull(packet, nameof(packet));
+            ErrorUtilities.VerifyThrow(_packetQueue != null, "packetQueue is null");
+            ErrorUtilities.VerifyThrow(_packetAvailable != null, "packetAvailable is null");
+            _packetQueue.Enqueue(packet);
+            _packetAvailable.Set();
         }
 
         /// <summary>
@@ -297,7 +322,7 @@ namespace Microsoft.Build.BackEnd
                 _packetPump.Name = "OutOfProc Endpoint Packet Pump";
                 _packetAvailable = new AutoResetEvent(false);
                 _terminatePacketPump = new AutoResetEvent(false);
-                _packetQueue = new Queue<INodePacket>();
+                _packetQueue = new ConcurrentQueue<INodePacket>();
                 _packetPump.Start();
             }
         }
@@ -310,14 +335,16 @@ namespace Microsoft.Build.BackEnd
         private void PacketPumpProc()
         {
             NamedPipeServerStream localPipeServer = _pipeServer;
+
             AutoResetEvent localPacketAvailable = _packetAvailable;
             AutoResetEvent localTerminatePacketPump = _terminatePacketPump;
-            Queue<INodePacket> localPacketQueue = _packetQueue;
+            ConcurrentQueue<INodePacket> localPacketQueue = _packetQueue;
 
             DateTime originalWaitStartTime = DateTime.UtcNow;
             bool gotValidConnection = false;
             while (!gotValidConnection)
             {
+                gotValidConnection = true;
                 DateTime restartWaitTime = DateTime.UtcNow;
 
                 // We only wait to wait the difference between now and the last original start time, in case we have multiple hosts attempting
@@ -328,10 +355,15 @@ namespace Microsoft.Build.BackEnd
                 try
                 {
                     // Wait for a connection
+#if FEATURE_APM
                     IAsyncResult resultForConnection = localPipeServer.BeginWaitForConnection(null, null);
                     CommunicationsUtilities.Trace("Waiting for connection {0} ms...", waitTimeRemaining);
-
                     bool connected = resultForConnection.AsyncWaitHandle.WaitOne(waitTimeRemaining, false);
+#else
+                    Task connectionTask = localPipeServer.WaitForConnectionAsync();
+                    CommunicationsUtilities.Trace("Waiting for connection {0} ms...", waitTimeRemaining);
+                    bool connected = connectionTask.Wait(waitTimeRemaining);
+#endif
                     if (!connected)
                     {
                         CommunicationsUtilities.Trace("Connection timed out waiting a host to contact us.  Exiting comm thread.");
@@ -340,50 +372,60 @@ namespace Microsoft.Build.BackEnd
                     }
 
                     CommunicationsUtilities.Trace("Parent started connecting. Reading handshake from parent");
+#if FEATURE_APM
                     localPipeServer.EndWaitForConnection(resultForConnection);
+#endif
 
-                    // The handshake protocol is a simple long exchange.  The host sends us a long, and we
-                    // respond with another long.  Once the handshake is complete, both sides can be assured the
-                    // other is ready to accept data.
-                    // To avoid mixing client and server builds, the long is the MSBuild binary timestamp.
-
-                    // Compatibility issue here.
-                    // Previous builds of MSBuild 4.0 would exchange just a byte.
-                    // Host would send either 0x5F or 0x60 depending on whether it was the toolset or not respectively.
-                    // Client would return either 0xF5 or 0x06 respectively.
-                    // Therefore an old host on a machine with new clients running will hang, 
-                    // sending a byte and waiting for a byte until it eventually times out;
-                    // because the new client will want 7 more bytes before it returns anything.
-                    // The other way around is not a problem, because the old client would immediately return the (wrong)
-                    // byte on receiving the first byte of the long sent by the new host, and the new host would disconnect.
-                    // To avoid the hang, special case here:
-                    // Make sure our handshakes always start with 00.
-                    // If we received ONLY one byte AND it's 0x5F or 0x60, return 0xFF (it doesn't matter what as long as
-                    // it will cause the host to reject us; new hosts expect 00 and old hosts expect F5 or 06).
+                    // The handshake protocol is a series of int exchanges.  The host sends us a each component, and we
+                    // verify it. Afterwards, the host sends an "End of Handshake" signal, to which we respond in kind.
+                    // Once the handshake is complete, both sides can be assured the other is ready to accept data.
+                    Handshake handshake = GetHandshake();
                     try
                     {
-                        long handshake = localPipeServer.ReadLongForHandshake(/* reject these leads */ new byte[] { 0x5F, 0x60 }, 0xFF /* this will disconnect the host; it expects leading 00 or F5 or 06 */);
-                        WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
-                        string remoteUserName = localPipeServer.GetImpersonationUserName();
-
-                        if (handshake != GetHostHandshake())
+                        int[] handshakeComponents = handshake.RetrieveHandshakeComponents();
+                        for (int i = 0; i < handshakeComponents.Length; i++)
                         {
-                            CommunicationsUtilities.Trace("Handshake failed. Received {0} from host not {1}. Probably the host is a different MSBuild build.", handshake, GetHostHandshake());
-                            localPipeServer.Disconnect();
-                            continue;
+                            int handshakePart = _pipeServer.ReadIntForHandshake(i == 0 ? (byte?)CommunicationsUtilities.handshakeVersion : null /* this will disconnect a < 16.8 host; it expects leading 00 or F5 or 06. 0x00 is a wildcard */
+#if NETCOREAPP2_1 || MONO
+                            , ClientConnectTimeout /* wait a long time for the handshake from this side */
+#endif
+                            );
+
+                            if (handshakePart != handshakeComponents[i])
+                            {
+                                CommunicationsUtilities.Trace("Handshake failed. Received {0} from host not {1}. Probably the host is a different MSBuild build.", handshakePart, handshakeComponents[i]);
+                                _pipeServer.WriteIntForHandshake(i + 1);
+                                gotValidConnection = false;
+                                break;
+                            }
                         }
 
-                        // We will only talk to a host that was started by the same user as us.  Even though the pipe access is set to only allow this user, we want to ensure they
-                        // haven't attempted to change those permissions out from under us.  This ensures that the only way they can truly gain access is to be impersonating the
-                        // user we were started by.
-                        WindowsIdentity clientIdentity = null;
-                        localPipeServer.RunAsClient(delegate () { clientIdentity = WindowsIdentity.GetCurrent(true); });
-
-                        if (clientIdentity == null || !String.Equals(clientIdentity.Name, currentIdentity.Name, StringComparison.OrdinalIgnoreCase))
+                        if (gotValidConnection)
                         {
-                            CommunicationsUtilities.Trace("Handshake failed. Host user is {0} but we were created by {1}.", (clientIdentity == null) ? "<unknown>" : clientIdentity.Name, currentIdentity.Name);
-                            localPipeServer.Disconnect();
-                            continue;
+                            // To ensure that our handshake and theirs have the same number of bytes, receive and send a magic number indicating EOS.
+#if NETCOREAPP2_1 || MONO
+                            _pipeServer.ReadEndOfHandshakeSignal(false, ClientConnectTimeout); /* wait a long time for the handshake from this side */
+#else
+                            _pipeServer.ReadEndOfHandshakeSignal(false);
+#endif
+                            CommunicationsUtilities.Trace("Successfully connected to parent.");
+                            _pipeServer.WriteEndOfHandshakeSignal();
+
+#if FEATURE_SECURITY_PERMISSIONS
+                            // We will only talk to a host that was started by the same user as us.  Even though the pipe access is set to only allow this user, we want to ensure they
+                            // haven't attempted to change those permissions out from under us.  This ensures that the only way they can truly gain access is to be impersonating the
+                            // user we were started by.
+                            WindowsIdentity currentIdentity = WindowsIdentity.GetCurrent();
+                            WindowsIdentity clientIdentity = null;
+                            localPipeServer.RunAsClient(delegate () { clientIdentity = WindowsIdentity.GetCurrent(true); });
+
+                            if (clientIdentity == null || !String.Equals(clientIdentity.Name, currentIdentity.Name, StringComparison.OrdinalIgnoreCase))
+                            {
+                                CommunicationsUtilities.Trace("Handshake failed. Host user is {0} but we were created by {1}.", (clientIdentity == null) ? "<unknown>" : clientIdentity.Name, currentIdentity.Name);
+                                gotValidConnection = false;
+                                continue;
+                            }
+#endif
                         }
                     }
                     catch (IOException e)
@@ -392,16 +434,26 @@ namespace Microsoft.Build.BackEnd
                         // 1. The host (OOP main node) connects to us, it immediately checks for user privileges
                         //    and if they don't match it disconnects immediately leaving us still trying to read the blank handshake
                         // 2. The host is too old sending us bits we automatically reject in the handshake
+                        // 3. We expected to read the EndOfHandshake signal, but we received something else
                         CommunicationsUtilities.Trace("Client connection failed but we will wait for another connection. Exception: {0}", e.Message);
+                        
+                        gotValidConnection = false;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        gotValidConnection = false;
+                    }
+
+                    if (!gotValidConnection)
+                    {
                         if (localPipeServer.IsConnected)
                         {
                             localPipeServer.Disconnect();
                         }
-
                         continue;
                     }
 
-                    gotValidConnection = true;
+                    ChangeLinkStatus(LinkStatus.Active);
                 }
                 catch (Exception e)
                 {
@@ -422,24 +474,60 @@ namespace Microsoft.Build.BackEnd
                 }
             }
 
-            CommunicationsUtilities.Trace("Writing handshake to parent");
-            localPipeServer.WriteLongForHandshake(GetClientHandshake());
-            ChangeLinkStatus(LinkStatus.Active);
+            RunReadLoop(
+                new BufferedReadStream(_pipeServer),
+                _pipeServer,
+                localPacketQueue, localPacketAvailable, localTerminatePacketPump);
 
+            CommunicationsUtilities.Trace("Ending read loop");
+
+            try
+            {
+                if (localPipeServer.IsConnected)
+                {
+#if NETCOREAPP // OperatingSystem.IsWindows() is new in .NET 5.0
+                    if (OperatingSystem.IsWindows())
+#endif
+                    {
+                        localPipeServer.WaitForPipeDrain();
+                    }
+
+                    localPipeServer.Disconnect();
+                }
+            }
+            catch (Exception)
+            {
+                // We don't really care if Disconnect somehow fails, but it gives us a chance to do the right thing.
+            }
+        }
+
+        private void RunReadLoop(Stream localReadPipe, Stream localWritePipe,
+            ConcurrentQueue<INodePacket> localPacketQueue, AutoResetEvent localPacketAvailable, AutoResetEvent localTerminatePacketPump)
+        {
             // Ordering of the wait handles is important.  The first signalled wait handle in the array 
             // will be returned by WaitAny if multiple wait handles are signalled.  We prefer to have the
             // terminate event triggered so that we cannot get into a situation where packets are being
             // spammed to the endpoint and it never gets an opportunity to shutdown.
             CommunicationsUtilities.Trace("Entering read loop.");
             byte[] headerByte = new byte[5];
-            IAsyncResult result = localPipeServer.BeginRead(headerByte, 0, headerByte.Length, null, null);
+#if FEATURE_APM
+            IAsyncResult result = localReadPipe.BeginRead(headerByte, 0, headerByte.Length, null, null);
+#else
+            Task<int> readTask = CommunicationsUtilities.ReadAsync(localReadPipe, headerByte, headerByte.Length);
+#endif
 
             bool exitLoop = false;
             do
             {
                 // Ordering is important.  We want packetAvailable to supercede terminate otherwise we will not properly wait for all
                 // packets to be sent by other threads which are shutting down, such as the logging thread.
-                WaitHandle[] handles = new WaitHandle[] { result.AsyncWaitHandle, localPacketAvailable, localTerminatePacketPump };
+                WaitHandle[] handles = new WaitHandle[] {
+#if FEATURE_APM
+                    result.AsyncWaitHandle,
+#else
+                    ((IAsyncResult)readTask).AsyncWaitHandle,
+#endif
+                    localPacketAvailable, localTerminatePacketPump };
 
                 int waitId = WaitHandle.WaitAny(handles);
                 switch (waitId)
@@ -449,7 +537,11 @@ namespace Microsoft.Build.BackEnd
                             int bytesRead = 0;
                             try
                             {
-                                bytesRead = localPipeServer.EndRead(result);
+#if FEATURE_APM
+                                bytesRead = localReadPipe.EndRead(result);
+#else
+                                bytesRead = readTask.Result;
+#endif
                             }
                             catch (Exception e)
                             {
@@ -479,11 +571,10 @@ namespace Microsoft.Build.BackEnd
                             }
 
                             NodePacketType packetType = (NodePacketType)Enum.ToObject(typeof(NodePacketType), headerByte[0]);
-                            int packetLength = BitConverter.ToInt32(headerByte, 1);
 
                             try
                             {
-                                _packetFactory.DeserializeAndRoutePacket(0, packetType, NodePacketTranslator.GetReadTranslator(localPipeServer, _sharedReadBuffer));
+                                _packetFactory.DeserializeAndRoutePacket(0, packetType, BinaryTranslator.GetReadTranslator(localReadPipe, _sharedReadBuffer));
                             }
                             catch (Exception e)
                             {
@@ -495,7 +586,11 @@ namespace Microsoft.Build.BackEnd
                                 break;
                             }
 
-                            result = localPipeServer.BeginRead(headerByte, 0, headerByte.Length, null, null);
+#if FEATURE_APM
+                            result = localReadPipe.BeginRead(headerByte, 0, headerByte.Length, null, null);
+#else
+                            readTask = CommunicationsUtilities.ReadAsync(localReadPipe, headerByte, headerByte.Length);
+#endif
                         }
 
                         break;
@@ -504,35 +599,30 @@ namespace Microsoft.Build.BackEnd
                     case 2:
                         try
                         {
-                            int packetCount = localPacketQueue.Count;
-
                             // Write out all the queued packets.
-                            while (packetCount > 0)
+                            INodePacket packet;
+                            while (localPacketQueue.TryDequeue(out packet))
                             {
-                                INodePacket packet;
-                                lock (_packetQueue)
-                                {
-                                    packet = localPacketQueue.Dequeue();
-                                }
+                                var packetStream = _packetStream;
+                                packetStream.SetLength(0);
 
-                                MemoryStream packetStream = new MemoryStream();
-                                INodePacketTranslator writeTranslator = NodePacketTranslator.GetWriteTranslator(packetStream);
+                                ITranslator writeTranslator = BinaryTranslator.GetWriteTranslator(packetStream);
 
                                 packetStream.WriteByte((byte)packet.Type);
 
                                 // Pad for packet length
-                                packetStream.Write(BitConverter.GetBytes((int)0), 0, 4);
+                                _binaryWriter.Write(0);
 
                                 // Reset the position in the write buffer.
                                 packet.Translate(writeTranslator);
 
+                                int packetStreamLength = (int)packetStream.Position;
+
                                 // Now write in the actual packet length
                                 packetStream.Position = 1;
-                                packetStream.Write(BitConverter.GetBytes((int)packetStream.Length - 5), 0, 4);
+                                _binaryWriter.Write(packetStreamLength - 5);
 
-                                localPipeServer.Write(packetStream.GetBuffer(), 0, (int)packetStream.Length);
-
-                                packetCount--;
+                                localWritePipe.Write(packetStream.GetBuffer(), 0, packetStreamLength);
                             }
                         }
                         catch (Exception e)
@@ -560,25 +650,10 @@ namespace Microsoft.Build.BackEnd
                 }
             }
             while (!exitLoop);
-
-            CommunicationsUtilities.Trace("Ending read loop");
-
-            try
-            {
-                if (localPipeServer.IsConnected)
-                {
-                    localPipeServer.WaitForPipeDrain();
-                    localPipeServer.Disconnect();
-                }
-            }
-            catch (Exception)
-            {
-                // We don't really care if Disconnect somehow fails, but it gives us a chance to do the right thing.
-            }
         }
 
-        #endregion
+#endregion
 
-        #endregion
+#endregion
     }
 }

@@ -1,18 +1,13 @@
-﻿// Copyright (c) Microsoft. All rights reserved.
+// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>Wrapper class to enable serialization of all allowed task parameter types.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
 using System.Security;
-using System.Security.Permissions;
-
-using Microsoft.Build.Collections;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Shared;
 
@@ -69,7 +64,11 @@ namespace Microsoft.Build.BackEnd
     /// Wrapper for task parameters, to allow proper serialization even 
     /// in cases where the parameter is not .NET serializable. 
     /// </summary>
-    internal class TaskParameter : MarshalByRefObject, INodePacketTranslatable
+    internal class TaskParameter :
+#if FEATURE_APPDOMAIN
+        MarshalByRefObject,
+#endif
+        ITranslatable
     {
         /// <summary>
         /// The TaskParameterType of the wrapped parameter
@@ -95,7 +94,7 @@ namespace Microsoft.Build.BackEnd
 
             Type wrappedParameterType = wrappedParameter.GetType();
 
-            if ((wrappedParameter as Exception) != null)
+            if (wrappedParameter is Exception)
             {
                 _parameterType = TaskParameterType.Invalid;
                 _wrappedParameter = wrappedParameter;
@@ -116,7 +115,7 @@ namespace Microsoft.Build.BackEnd
                     _parameterType = TaskParameterType.StringArray;
                     _wrappedParameter = wrappedParameter;
                 }
-                else if (typeof(ITaskItem[]).IsAssignableFrom(wrappedParameterType))
+                else if (typeof(ITaskItem[]).GetTypeInfo().IsAssignableFrom(wrappedParameterType.GetTypeInfo()))
                 {
                     _parameterType = TaskParameterType.ITaskItemArray;
                     ITaskItem[] inputAsITaskItemArray = (ITaskItem[])wrappedParameter;
@@ -132,7 +131,7 @@ namespace Microsoft.Build.BackEnd
 
                     _wrappedParameter = taskItemArrayParameter;
                 }
-                else if (wrappedParameterType.GetElementType().IsValueType)
+                else if (wrappedParameterType.GetElementType().GetTypeInfo().IsValueType)
                 {
                     _parameterType = TaskParameterType.ValueTypeArray;
                     _wrappedParameter = wrappedParameter;
@@ -155,7 +154,7 @@ namespace Microsoft.Build.BackEnd
                     _parameterType = TaskParameterType.ITaskItem;
                     _wrappedParameter = CreateNewTaskItemFrom((ITaskItem)wrappedParameter);
                 }
-                else if (wrappedParameterType.IsValueType)
+                else if (wrappedParameterType.GetTypeInfo().IsValueType)
                 {
                     _parameterType = TaskParameterType.ValueType;
                     _wrappedParameter = wrappedParameter;
@@ -205,7 +204,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Serialize / deserialize this item. 
         /// </summary>
-        public void Translate(INodePacketTranslator translator)
+        public void Translate(ITranslator translator)
         {
             translator.TranslateEnum<TaskParameterType>(ref _parameterType, (int)_parameterType);
 
@@ -236,7 +235,7 @@ namespace Microsoft.Build.BackEnd
                     break;
                 case TaskParameterType.Invalid:
                     Exception exceptionParam = (Exception)_wrappedParameter;
-                    translator.TranslateDotNet(ref exceptionParam);
+                    translator.TranslateException(ref exceptionParam);
                     _wrappedParameter = exceptionParam;
                     break;
                 default:
@@ -245,6 +244,7 @@ namespace Microsoft.Build.BackEnd
             }
         }
 
+#if FEATURE_APPDOMAIN
         /// <summary>
         /// Overridden to give this class infinite lease time. Otherwise we end up with a limited
         /// lease (5 minutes I think) and instances can expire if they take long time processing.
@@ -255,11 +255,12 @@ namespace Microsoft.Build.BackEnd
             // null means infinite lease time
             return null;
         }
+#endif
 
         /// <summary>
         /// Factory for deserialization.
         /// </summary>
-        internal static TaskParameter FactoryForDeserialization(INodePacketTranslator translator)
+        internal static TaskParameter FactoryForDeserialization(ITranslator translator)
         {
             TaskParameter taskParameter = new TaskParameter();
             taskParameter.Translate(translator);
@@ -272,11 +273,9 @@ namespace Microsoft.Build.BackEnd
         private ITaskItem CreateNewTaskItemFrom(ITaskItem copyFrom)
         {
             ITaskItem2 copyFromAsITaskItem2 = copyFrom as ITaskItem2;
-
-            string escapedItemSpec = null;
-            string escapedDefiningProject = null;
-            Dictionary<string, string> escapedMetadata = null;
-
+            string escapedItemSpec;
+            string escapedDefiningProject;
+            Dictionary<string, string> escapedMetadata;
             if (copyFromAsITaskItem2 != null)
             {
                 escapedItemSpec = copyFromAsITaskItem2.EvaluatedIncludeEscaped;
@@ -309,7 +308,7 @@ namespace Microsoft.Build.BackEnd
                 IDictionary customMetadata = copyFrom.CloneCustomMetadata();
                 escapedMetadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-                if (customMetadata != null && customMetadata.Count > 0)
+                if (customMetadata?.Count > 0)
                 {
                     foreach (string key in customMetadata.Keys)
                     {
@@ -325,7 +324,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Serialize / deserialize this item. 
         /// </summary>
-        private void TranslateITaskItemArray(INodePacketTranslator translator)
+        private void TranslateITaskItemArray(ITranslator translator)
         {
             if (!TranslateNullable(translator, _wrappedParameter))
             {
@@ -362,7 +361,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Serialize / deserialize this item. 
         /// </summary>
-        private void TranslateITaskItem(INodePacketTranslator translator)
+        private void TranslateITaskItem(ITranslator translator)
         {
             if (translator.Mode == TranslationDirection.WriteToStream)
             {
@@ -379,7 +378,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Write the given ITaskItem, using the given write translator
         /// </summary>
-        private void WriteITaskItem(INodePacketTranslator translator, ITaskItem wrappedItem)
+        private void WriteITaskItem(ITranslator translator, ITaskItem wrappedItem)
         {
             ErrorUtilities.VerifyThrow(translator.Mode == TranslationDirection.WriteToStream, "Cannot call this method when reading!");
 
@@ -446,7 +445,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Read an ITaskItem into the given parameter, using the given read translator
         /// </summary>
-        private void ReadITaskItem(INodePacketTranslator translator, ref ITaskItem wrappedItem)
+        private void ReadITaskItem(ITranslator translator, ref ITaskItem wrappedItem)
         {
             ErrorUtilities.VerifyThrow(translator.Mode == TranslationDirection.ReadFromStream, "Cannot call this method when writing!");
 
@@ -470,7 +469,7 @@ namespace Microsoft.Build.BackEnd
         /// Writes out the boolean which says if this object is null or not.
         /// </summary>
         /// <typeparam name="T">The nullable type to translate.</typeparam>
-        private bool TranslateNullable<T>(INodePacketTranslator translator, T value)
+        private bool TranslateNullable<T>(ITranslator translator, T value)
         {
             bool haveRef = false;
 
@@ -490,7 +489,15 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Super simple ITaskItem derivative that we can use as a container for read items.  
         /// </summary>
-        private class TaskParameterTaskItem : MarshalByRefObject, ITaskItem, ITaskItem2
+        private class TaskParameterTaskItem :
+#if FEATURE_APPDOMAIN
+            MarshalByRefObject,
+#endif
+            ITaskItem,
+            ITaskItem2
+#if !TASKHOST
+            ,IMetadataContainer
+#endif
         {
             /// <summary>
             /// The item spec 
@@ -517,7 +524,7 @@ namespace Microsoft.Build.BackEnd
             /// </summary>
             public TaskParameterTaskItem(string escapedItemSpec, string escapedDefiningProject, Dictionary<string, string> escapedMetadata)
             {
-                ErrorUtilities.VerifyThrowInternalNull(escapedItemSpec, "escapedItemSpec");
+                ErrorUtilities.VerifyThrowInternalNull(escapedItemSpec, nameof(escapedItemSpec));
 
                 _escapedItemSpec = escapedItemSpec;
                 _escapedDefiningProject = escapedDefiningProject;
@@ -570,7 +577,7 @@ namespace Microsoft.Build.BackEnd
                 get
                 {
                     int count = (_customEscapedMetadata == null) ? 0 : _customEscapedMetadata.Count;
-                    return (count + FileUtilities.ItemSpecModifiers.All.Length);
+                    return count + FileUtilities.ItemSpecModifiers.All.Length;
                 }
             }
 
@@ -608,13 +615,13 @@ namespace Microsoft.Build.BackEnd
             /// <param name="metadataValue">The metadata value.</param>
             public void SetMetadata(string metadataName, string metadataValue)
             {
-                ErrorUtilities.VerifyThrowArgumentLength(metadataName, "metadataName");
+                ErrorUtilities.VerifyThrowArgumentLength(metadataName, nameof(metadataName));
 
                 // Non-derivable metadata can only be set at construction time.
                 // That's why this is IsItemSpecModifier and not IsDerivableItemSpecModifier.
                 ErrorUtilities.VerifyThrowArgument(!FileUtilities.ItemSpecModifiers.IsDerivableItemSpecModifier(metadataName), "Shared.CannotChangeItemSpecModifiers", metadataName);
 
-                _customEscapedMetadata = _customEscapedMetadata ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                _customEscapedMetadata ??= new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
                 _customEscapedMetadata[metadataName] = metadataValue ?? String.Empty;
             }
@@ -625,7 +632,7 @@ namespace Microsoft.Build.BackEnd
             /// <param name="metadataName">The name of the metadata to remove.</param>
             public void RemoveMetadata(string metadataName)
             {
-                ErrorUtilities.VerifyThrowArgumentNull(metadataName, "metadataName");
+                ErrorUtilities.VerifyThrowArgumentNull(metadataName, nameof(metadataName));
                 ErrorUtilities.VerifyThrowArgument(!FileUtilities.ItemSpecModifiers.IsItemSpecModifier(metadataName), "Shared.CannotChangeItemSpecModifiers", metadataName);
 
                 if (_customEscapedMetadata == null)
@@ -648,7 +655,7 @@ namespace Microsoft.Build.BackEnd
             /// <param name="destinationItem">The item to copy metadata to.</param>
             public void CopyMetadataTo(ITaskItem destinationItem)
             {
-                ErrorUtilities.VerifyThrowArgumentNull(destinationItem, "destinationItem");
+                ErrorUtilities.VerifyThrowArgumentNull(destinationItem, nameof(destinationItem));
 
                 // also copy the original item-spec under a "magic" metadata -- this is useful for tasks that forward metadata
                 // between items, and need to know the source item where the metadata came from
@@ -697,6 +704,7 @@ namespace Microsoft.Build.BackEnd
                 return (IDictionary)clonedMetadata;
             }
 
+#if FEATURE_APPDOMAIN
             /// <summary>
             /// Overridden to give this class infinite lease time. Otherwise we end up with a limited
             /// lease (5 minutes I think) and instances can expire if they take long time processing.
@@ -707,13 +715,14 @@ namespace Microsoft.Build.BackEnd
                 // null means infinite lease time
                 return null;
             }
+#endif
 
             /// <summary>
             /// Returns the escaped value of the requested metadata name.
             /// </summary>
             string ITaskItem2.GetMetadataValueEscaped(string metadataName)
             {
-                ErrorUtilities.VerifyThrowArgumentNull(metadataName, "metadataName");
+                ErrorUtilities.VerifyThrowArgumentNull(metadataName, nameof(metadataName));
 
                 string metadataValue = null;
 
@@ -728,7 +737,7 @@ namespace Microsoft.Build.BackEnd
                     _customEscapedMetadata.TryGetValue(metadataName, out metadataValue);
                 }
 
-                return (metadataValue == null) ? String.Empty : metadataValue;
+                return metadataValue ?? String.Empty;
             }
 
             /// <summary>
@@ -746,6 +755,55 @@ namespace Microsoft.Build.BackEnd
             {
                 IDictionary clonedDictionary = new Dictionary<string, string>(_customEscapedMetadata);
                 return clonedDictionary;
+            }
+
+            public IEnumerable<KeyValuePair<string, string>> EnumerateMetadata()
+            {
+#if FEATURE_APPDOMAIN
+                if (!AppDomain.CurrentDomain.IsDefaultAppDomain())
+                {
+                    return EnumerateMetadataEager();
+                }
+#endif
+
+                return EnumerateMetadataLazy();
+            }
+
+            private IEnumerable<KeyValuePair<string, string>> EnumerateMetadataEager()
+            {
+                if (_customEscapedMetadata == null || _customEscapedMetadata.Count == 0)
+                {
+#if TASKHOST
+                    // MSBuildTaskHost.dll compiles against .NET 3.5 which doesn't have Array.Empty()
+                    return new KeyValuePair<string, string>[0];
+#else
+                    return Array.Empty<KeyValuePair<string, string>>();
+#endif
+                }
+
+                var result = new KeyValuePair<string, string>[_customEscapedMetadata.Count];
+                int index = 0;
+                foreach (var kvp in _customEscapedMetadata)
+                {
+                    var unescaped = new KeyValuePair<string, string>(kvp.Key, EscapingUtilities.UnescapeAll(kvp.Value));
+                    result[index++] = unescaped;
+                }
+
+                return result;
+            }
+
+            private IEnumerable<KeyValuePair<string, string>> EnumerateMetadataLazy()
+            {
+                if (_customEscapedMetadata == null)
+                {
+                    yield break;
+                }
+
+                foreach (var kvp in _customEscapedMetadata)
+                {
+                    var unescaped = new KeyValuePair<string, string>(kvp.Key, EscapingUtilities.UnescapeAll(kvp.Value));
+                    yield return unescaped;
+                }
             }
         }
     }

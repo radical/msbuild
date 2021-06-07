@@ -1,18 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A packet which contains all the information the parent node 
-// needs from the task host on completion of task execution.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Text;
-
-using Microsoft.Build.Collections;
 using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.BackEnd
@@ -96,7 +87,7 @@ namespace Microsoft.Build.BackEnd
         /// <param name="buildProcessEnvironment">The build process environment as it was at the end of the task's execution.</param>
         public TaskHostTaskComplete(OutOfProcTaskHostTaskResult result, IDictionary<string, string> buildProcessEnvironment)
         {
-            ErrorUtilities.VerifyThrowInternalNull(result, "result");
+            ErrorUtilities.VerifyThrowInternalNull(result, nameof(result));
 
             _taskResult = result.Result;
             _taskException = result.TaskException;
@@ -212,10 +203,10 @@ namespace Microsoft.Build.BackEnd
         /// Translates the packet to/from binary form.
         /// </summary>
         /// <param name="translator">The translator to use.</param>
-        public void Translate(INodePacketTranslator translator)
+        public void Translate(ITranslator translator)
         {
             translator.TranslateEnum(ref _taskResult, (int)_taskResult);
-            translator.TranslateDotNet(ref _taskException);
+            translator.TranslateException(ref _taskException);
             translator.Translate(ref _taskExceptionMessage);
             translator.Translate(ref _taskExceptionMessageArgs);
             translator.TranslateDictionary(ref _taskOutputParameters, StringComparer.OrdinalIgnoreCase, TaskParameter.FactoryForDeserialization);
@@ -225,7 +216,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Factory for deserialization.
         /// </summary>
-        internal static INodePacket FactoryForDeserialization(INodePacketTranslator translator)
+        internal static INodePacket FactoryForDeserialization(ITranslator translator)
         {
             TaskHostTaskComplete taskComplete = new TaskHostTaskComplete();
             taskComplete.Translate(translator);

@@ -1,15 +1,5 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A packet which informs the task host that the task it is 
-// currently executing has been canceled.</summary>
-//-----------------------------------------------------------------------
-
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 
 namespace Microsoft.Build.BackEnd
 {
@@ -38,7 +28,7 @@ namespace Microsoft.Build.BackEnd
         /// Translates the packet to/from binary form.
         /// </summary>
         /// <param name="translator">The translator to use.</param>
-        public void Translate(INodePacketTranslator translator)
+        public void Translate(ITranslator translator)
         {
             // Do nothing -- this packet doesn't contain any parameters. 
         }
@@ -46,7 +36,7 @@ namespace Microsoft.Build.BackEnd
         /// <summary>
         /// Factory for deserialization.
         /// </summary>
-        internal static INodePacket FactoryForDeserialization(INodePacketTranslator translator)
+        internal static INodePacket FactoryForDeserialization(ITranslator translator)
         {
             TaskHostTaskCancelled taskCancelled = new TaskHostTaskCancelled();
             taskCancelled.Translate(translator);

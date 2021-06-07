@@ -19,11 +19,12 @@ namespace Microsoft.Build.Framework
     /// 3) Normal -- display all errors, warnings, high importance events, some status events, and a build summary
     /// 4) Detailed -- display all errors, warnings, high and normal importance events, all status events, and a build summary
     /// 5) Diagnostic -- display all events, and a build summary
-    /// 
-    /// WARNING: VS Automation code for the Tools/Options MSBuild build verbosity setting will be broken
-    /// by changes to this enum (not to mention existing MSBuild clients and vsproject code). 
-    /// Please make sure to talk to automation devs before changing it.
     /// </remarks>
+    // 
+    // WARNING: VS Automation code for the Tools/Options MSBuild build verbosity setting will be broken
+    // by changes to this enum (not to mention existing MSBuild clients and vsproject code). 
+    // Please make sure to talk to automation devs before changing it.
+
     [ComVisible(true)]
     public enum LoggerVerbosity
     {
@@ -66,24 +67,14 @@ namespace Microsoft.Build.Framework
         /// important that the guidelines for each level be followed, for a good user experience.
         /// </summary>
         /// <value>The verbosity level.</value>
-        LoggerVerbosity Verbosity
-        {
-            get;
-
-            set;
-        }
+        LoggerVerbosity Verbosity { get; set; }
 
         /// <summary>
         /// This property holds the user-specified parameters to the logger. If parameters are not provided, a logger should revert
         /// to defaults. If a logger does not take parameters, it can ignore this property.
         /// </summary>
         /// <value>The parameter string (can be null).</value>
-        string Parameters
-        {
-            get;
-
-            set;
-        }
+        string Parameters { get; set; }
 
         /// <summary>
         /// Called by the build engine to allow loggers to subscribe to the events they desire.

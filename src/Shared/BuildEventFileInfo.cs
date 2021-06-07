@@ -3,7 +3,7 @@
 
 using System;
 using System.Xml;
-using System.Xml.Schema;
+using Microsoft.Build.Construction;
 
 namespace Microsoft.Build.Shared
 {
@@ -12,15 +12,9 @@ namespace Microsoft.Build.Shared
     /// </summary>
     internal sealed class BuildEventFileInfo
     {
-        #region Constructors
+        internal static BuildEventFileInfo Empty = new BuildEventFileInfo(ElementLocation.EmptyLocation);
 
-        /// <summary>
-        /// Private default constructor disallows parameterless instantiation.
-        /// </summary>
-        private BuildEventFileInfo()
-        {
-            // do nothing
-        }
+        #region Constructors
 
         /// <summary>
         /// Creates an instance of this class using the given filename/path.
@@ -75,7 +69,7 @@ namespace Microsoft.Build.Shared
         internal BuildEventFileInfo(string file, int line, int column, int endLine, int endColumn)
         {
             // Projects that don't have a filename when the are built should use an empty string instead.
-            _file = (file == null) ? String.Empty : file;
+            _file = file ?? String.Empty;
             _line = line;
             _column = column;
             _endLine = endLine;
@@ -89,12 +83,25 @@ namespace Microsoft.Build.Shared
         internal BuildEventFileInfo(XmlException e)
         {
             ErrorUtilities.VerifyThrow(e != null, "Need exception context.");
-
+#if FEATURE_XML_SOURCE_URI
             _file = (e.SourceUri.Length == 0) ? String.Empty : new Uri(e.SourceUri).LocalPath;
+#else
+            _file = String.Empty;
+#endif
             _line = e.LineNumber;
             _column = e.LinePosition;
             _endLine = 0;
             _endColumn = 0;
+        }
+
+        /// <summary>
+        /// Creates an instance of this class using the information in the given XmlException and file location.
+        /// </summary>
+        internal BuildEventFileInfo(string file, XmlException e) : this(e)
+        {
+            ErrorUtilities.VerifyThrowArgumentNull(file, nameof(file));
+
+            _file = file;
         }
 
         #endregion

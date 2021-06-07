@@ -1,14 +1,9 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-// </copyright>
-// <summary>Structure which includes the success or failures of the IBuildEngine build and the target outputs.</summary>
-//-----------------------------------------------------------------------
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 
 namespace Microsoft.Build.Framework
 {
@@ -22,23 +17,23 @@ namespace Microsoft.Build.Framework
         /// <summary>
         /// Did the build pass or fail
         /// </summary>
-        private bool _buildResult;
+        private bool buildResult;
 
         /// <summary>
         /// Target outputs by project
         /// </summary>
-        private List<IDictionary<string, ITaskItem[]>> _targetOutputsPerProject;
+        private List<IDictionary<string, ITaskItem[]>> targetOutputsPerProject;
 
         /// <summary>
         /// The constructor takes the result of the build and a list of the target outputs per project
         /// </summary>
         public BuildEngineResult(bool result, List<IDictionary<string, ITaskItem[]>> targetOutputsPerProject)
         {
-            _buildResult = result;
-            _targetOutputsPerProject = targetOutputsPerProject;
-            if (_targetOutputsPerProject == null)
+            buildResult = result;
+            this.targetOutputsPerProject = targetOutputsPerProject;
+            if (this.targetOutputsPerProject == null)
             {
-                _targetOutputsPerProject = new List<IDictionary<string, ITaskItem[]>>();
+                this.targetOutputsPerProject = new List<IDictionary<string, ITaskItem[]>>();
             }
         }
 
@@ -49,7 +44,7 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _buildResult;
+                return buildResult;
             }
         }
 
@@ -60,7 +55,7 @@ namespace Microsoft.Build.Framework
         {
             get
             {
-                return _targetOutputsPerProject;
+                return targetOutputsPerProject;
             }
         }
     }

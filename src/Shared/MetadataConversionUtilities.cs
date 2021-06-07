@@ -2,7 +2,6 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.Globalization;
 using Microsoft.Build.Framework;
 
 namespace Microsoft.Build.Shared
@@ -31,7 +30,7 @@ namespace Microsoft.Build.Shared
             )
         {
             string metadataValue = item.GetMetadata(itemMetadataName);
-            if (metadataValue == null || metadataValue.Length == 0)
+            if (string.IsNullOrEmpty(metadataValue))
             {
                 metadataFound = false;
                 return false;
@@ -44,7 +43,7 @@ namespace Microsoft.Build.Shared
             }
             catch (System.ArgumentException e)
             {
-                throw new ArgumentException(ResourceUtilities.FormatResourceString("General.InvalidAttributeMetadata", item.ItemSpec, itemMetadataName, metadataValue, "bool"), e);
+                throw new ArgumentException(ResourceUtilities.FormatResourceStringStripCodeAndKeyword("General.InvalidAttributeMetadata", item.ItemSpec, itemMetadataName, metadataValue, "bool"), e);
             }
         }
 
@@ -63,7 +62,7 @@ namespace Microsoft.Build.Shared
                 string itemMetadataName
             )
         {
-            bool metadataFound = false;
+            bool metadataFound;
             return TryConvertItemMetadataToBool(item, itemMetadataName, out metadataFound);
         }
     }

@@ -1,19 +1,13 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
-//-----------------------------------------------------------------------
-// </copyright>
-// <summary>A utility class that mediates access to a shared string builder.</summary>
-//-----------------------------------------------------------------------
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
-using System.Reflection;
 using System.Text;
 using System.Threading;
-using Microsoft.Build.Shared;
 
 namespace Microsoft.Build.Shared
 {
@@ -21,9 +15,9 @@ namespace Microsoft.Build.Shared
     /// A StringBuilder lookalike that reuses its internal storage.
     /// </summary>
     /// <remarks>
-    /// You can add any properties or methods on the real StringBuilder that are needed.
+    /// This class is being deprecated in favor of SpanBasedStringBuilder in StringTools. Avoid adding more uses.
     /// </remarks>
-    internal sealed class ReuseableStringBuilder : IDisposable, OpportunisticIntern.IInternable
+    internal sealed class ReuseableStringBuilder : IDisposable
     {
         /// <summary>
         /// Captured string builder.
@@ -50,58 +44,12 @@ namespace Microsoft.Build.Shared
         /// </summary>
         public int Length
         {
-            get { return ((_borrowedBuilder == null) ? 0 : _borrowedBuilder.Length); }
-        }
-
-        /// <summary>
-        /// Indexer into the target. Presumed to be fast.
-        /// </summary>
-        char OpportunisticIntern.IInternable.this[int index]
-        {
-            get
+            get { return (_borrowedBuilder == null) ? 0 : _borrowedBuilder.Length; }
+            set
             {
-                LazyPrepare(); // Must have one to call this
-                return _borrowedBuilder[index];
+                LazyPrepare();
+                _borrowedBuilder.Length = value;
             }
-        }
-
-        /// <summary>
-        /// Convert target to string. Presumed to be slow (and will be called just once).
-        /// </summary>
-        string OpportunisticIntern.IInternable.ExpensiveConvertToString()
-        {
-            {
-                return ((ReuseableStringBuilder)this).ToString();
-            }
-        }
-
-        /// <summary>
-        /// Compare target to string. 
-        /// </summary>
-        bool OpportunisticIntern.IInternable.IsOrdinalEqualToStringOfSameLength(string other)
-        {
-#if DEBUG
-            ErrorUtilities.VerifyThrow(other.Length == _borrowedBuilder.Length, "should be same length");
-#endif
-            // Backwards because the end of the string is (by observation of Australian Government build) more likely to be different earlier in the loop.
-            // For example, C:\project1, C:\project2
-            for (int i = _borrowedBuilder.Length - 1; i >= 0; --i)
-            {
-                if (_borrowedBuilder[i] != other[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Never reference equals to string.
-        /// </summary>
-        bool OpportunisticIntern.IInternable.ReferenceEquals(string other)
-        {
-            return false;
         }
 
         /// <summary>
@@ -160,6 +108,34 @@ namespace Microsoft.Build.Shared
             return this;
         }
 
+        public ReuseableStringBuilder AppendSeparated(char separator, ICollection<string> strings)
+        {
+            LazyPrepare();
+
+            var separatorsRemaining = strings.Count - 1;
+
+            foreach (var s in strings)
+            {
+                _borrowedBuilder.Append(s);
+
+                if (separatorsRemaining > 0)
+                {
+                    _borrowedBuilder.Append(separator);
+                }
+
+                separatorsRemaining--;
+            }
+
+            return this;
+        }
+
+        public ReuseableStringBuilder Clear()
+        {
+            LazyPrepare();
+            _borrowedBuilder.Clear();
+            return this;
+        }
+
         /// <summary>
         /// Remove a substring.
         /// </summary>
@@ -205,11 +181,6 @@ namespace Microsoft.Build.Shared
             private static StringBuilder s_sharedBuilder;
 
 #if DEBUG
-            /// <summary>
-            /// Flag to help expose bugs
-            /// </summary>
-            private static bool s_stress = String.Equals(Environment.GetEnvironmentVariable("MSBUILDRSBSTRESS"), "1", StringComparison.Ordinal);
-
             /// <summary>
             /// Count of successful reuses
             /// </summary>
@@ -295,9 +266,6 @@ namespace Microsoft.Build.Shared
             /// </summary>
             internal static void Release(StringBuilder returningBuilder)
             {
-                // ErrorUtilities.VerifyThrow(handouts.TryRemove(returningBuilder, out dummy), "returned but not loaned");
-                returningBuilder.Clear(); // This is free: it just sets length to zero internally
-
                 // It's possible for someone to cause the builder to
                 // enlarge to such an extent that this static field
                 // would be a leak. To avoid that, only accept
@@ -309,6 +277,9 @@ namespace Microsoft.Build.Shared
                 // So the shared builder will be "replaced".
                 if (returningBuilder.Capacity < MaxBuilderSize)
                 {
+                    // ErrorUtilities.VerifyThrow(handouts.TryRemove(returningBuilder, out dummy), "returned but not loaned");
+                    returningBuilder.Clear(); // Clear before pooling
+
                     Interlocked.Exchange(ref s_sharedBuilder, returningBuilder);
 #if DEBUG
                     Interlocked.Increment(ref s_accepts);

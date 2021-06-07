@@ -2,9 +2,7 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.IO;
 using System.Reflection;
-using System.Collections.Generic;
 using Microsoft.Build.Framework;
 
 namespace Microsoft.Build.Shared
@@ -20,8 +18,6 @@ namespace Microsoft.Build.Shared
         /// <summary>
         /// Creates an instance of this class for the given type.
         /// </summary>
-        /// <param name="type"></param>
-        /// <param name="assembly"></param>
         internal LoadedType(Type type, AssemblyLoadInfo assemblyLoadInfo)
             : this(type, assemblyLoadInfo, null)
         {
@@ -60,7 +56,7 @@ namespace Microsoft.Build.Shared
         {
             if (_hasLoadInSeparateAppDomainAttribute == null)
             {
-                _hasLoadInSeparateAppDomainAttribute = this.Type.IsDefined(typeof(LoadInSeparateAppDomainAttribute), true /* inherited */);
+                _hasLoadInSeparateAppDomainAttribute = this.Type.GetTypeInfo().IsDefined(typeof(LoadInSeparateAppDomainAttribute), true /* inherited */);
             }
 
             return (bool)_hasLoadInSeparateAppDomainAttribute;
@@ -75,7 +71,7 @@ namespace Microsoft.Build.Shared
         {
             if (_hasSTAThreadAttribute == null)
             {
-                _hasSTAThreadAttribute = this.Type.IsDefined(typeof(RunInSTAAttribute), true /* inherited */);
+                _hasSTAThreadAttribute = this.Type.GetTypeInfo().IsDefined(typeof(RunInSTAAttribute), true /* inherited */);
             }
 
             return (bool)_hasSTAThreadAttribute;
@@ -92,7 +88,7 @@ namespace Microsoft.Build.Shared
             // we changed to running all tasks in MTA.
             if (String.Equals("Microsoft.Build.Tasks.Xaml.PartialClassGenerationTask", _type.FullName, StringComparison.OrdinalIgnoreCase))
             {
-                AssemblyName assemblyName = _type.Assembly.GetName();
+                AssemblyName assemblyName = _type.GetTypeInfo().Assembly.GetName();
                 Version lastVersionToForce = new Version(3, 5);
                 if (assemblyName.Version.CompareTo(lastVersionToForce) > 0)
                 {

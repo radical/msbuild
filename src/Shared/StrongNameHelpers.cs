@@ -2,11 +2,12 @@
 // Licensed under the MIT license. See LICENSE file in the project root for full license information.
 
 using System;
-using System.Security;
-using System.Text;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+
+#if FEATURE_STRONG_NAMES
 
 namespace Microsoft.Runtime.Hosting
 {
@@ -23,6 +24,9 @@ namespace Microsoft.Runtime.Hosting
         [ThreadStatic]
         private static IClrStrongName s_StrongName;
 
+        [ThreadStatic]
+        private static MethodInfo s_GetRuntimeInterfaceAsObjectMethod;
+
         [SuppressMessage("Microsoft.Performance", "CA1811:AvoidUncalledPrivateCode", Justification = "This file is included in a lot of projects some of which only use a subset of the functions.")]
         private static IClrStrongName StrongName
         {
@@ -31,9 +35,20 @@ namespace Microsoft.Runtime.Hosting
             {
                 if (s_StrongName == null)
                 {
-                    s_StrongName = (IClrStrongName)RuntimeEnvironment.GetRuntimeInterfaceAsObject(
-                        new Guid("B79B0ACD-F5CD-409b-B5A5-A16244610B92"),
-                        new Guid("9FD93CCF-3280-4391-B3A9-96E1CDE77C8D"));
+                    if (s_GetRuntimeInterfaceAsObjectMethod == null)
+                    {
+                        s_GetRuntimeInterfaceAsObjectMethod = typeof(RuntimeEnvironment).GetMethod("GetRuntimeInterfaceAsObject");
+                    }
+
+                    if (s_GetRuntimeInterfaceAsObjectMethod != null)
+                    {
+                        s_StrongName = (IClrStrongName)s_GetRuntimeInterfaceAsObjectMethod.Invoke(null,
+                            new object[]
+                            {
+                                new Guid("B79B0ACD-F5CD-409b-B5A5-A16244610B92"),
+                                new Guid("9FD93CCF-3280-4391-B3A9-96E1CDE77C8D")
+                            });
+                    }
                 }
                 return s_StrongName;
             }
@@ -126,7 +141,7 @@ namespace Microsoft.Runtime.Hosting
         public static bool StrongNameSignatureGeneration(string pwzFilePath, string pwzKeyContainer, IntPtr pbKeyBlob, int cbKeyBlob)
         {
             IntPtr ppbSignatureBlob = IntPtr.Zero;
-            int cbSignatureBlob = 0;
+            int cbSignatureBlob;
             return StrongNameSignatureGeneration(pwzFilePath, pwzKeyContainer, pbKeyBlob, cbKeyBlob, ref ppbSignatureBlob, out cbSignatureBlob);
         }
 
@@ -263,7 +278,7 @@ namespace Microsoft.Runtime.Hosting
         public static bool StrongNameSignatureGeneration(string pwzFilePath, string pwzKeyContainer, byte[] bKeyBlob, int cbKeyBlob)
         {
             IntPtr ppbSignatureBlob = IntPtr.Zero;
-            int cbSignatureBlob = 0;
+            int cbSignatureBlob;
             return StrongNameSignatureGeneration(pwzFilePath, pwzKeyContainer, bKeyBlob, cbKeyBlob, ref ppbSignatureBlob, out cbSignatureBlob);
         }
 
@@ -717,3 +732,4 @@ namespace Microsoft.Runtime.Hosting
             [MarshalAs(UnmanagedType.U4)] out int pcbStrongNameToken);
     }
 }
+#endif
